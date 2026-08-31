@@ -1,10 +1,5 @@
-import type { Metadata } from "next";
-import { SummaryStep } from "@/components/intake/SummaryStep";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Summary",
-};
-
-export default function SummaryPage() {
-  return <SummaryStep />;
+export default function SummaryRedirectPage() {
+  redirect("/implementation/review");
 }

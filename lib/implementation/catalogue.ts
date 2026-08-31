@@ -1,4 +1,4 @@
-import type { PmsOption } from "@/types/implementation";
+import type { PmsAccessMethod, PmsOption } from "@/types/implementation";
 
 export const PMS_CATALOGUE: readonly PmsOption[] = [
   {
@@ -11,8 +11,8 @@ export const PMS_CATALOGUE: readonly PmsOption[] = [
   },
   {
     id: "operaonprem",
-    name: "OPERA On-Premise",
-    vendor: "Oracle 5.x",
+    name: "OPERA / OPERA 5",
+    vendor: "Oracle",
     host: "onprem",
     integration: "OXI / interface",
     kind: "interface",
@@ -27,7 +27,7 @@ export const PMS_CATALOGUE: readonly PmsOption[] = [
   },
   {
     id: "fosse",
-    name: "Marriott FOSSE",
+    name: "FOSSE",
     vendor: "Marriott",
     host: "onprem",
     integration: "Brand-approved route",
@@ -35,7 +35,7 @@ export const PMS_CATALOGUE: readonly PmsOption[] = [
   },
   {
     id: "onq",
-    name: "Hilton OnQ",
+    name: "OnQ",
     vendor: "Hilton",
     host: "onprem",
     integration: "Brand-approved route",
@@ -43,7 +43,7 @@ export const PMS_CATALOGUE: readonly PmsOption[] = [
   },
   {
     id: "pep",
-    name: "Hilton PEP",
+    name: "PEP",
     vendor: "Hilton",
     host: "cloud",
     integration: "Brand-approved route",
@@ -82,8 +82,24 @@ export const PMS_CATALOGUE: readonly PmsOption[] = [
     kind: "api",
   },
   {
+    id: "oraclehosp",
+    name: "Oracle Hospitality",
+    vendor: "Oracle",
+    host: "cloud",
+    integration: "OHIP",
+    kind: "api",
+  },
+  {
+    id: "stayntouch",
+    name: "StayNTouch",
+    vendor: "StayNTouch",
+    host: "cloud",
+    integration: "StayNTouch API",
+    kind: "api",
+  },
+  {
     id: "other",
-    name: "Other",
+    name: "Other / Not listed",
     vendor: "Not listed",
     host: "",
     integration: "To be determined",
@@ -116,11 +132,29 @@ export const HOSTING_OPTIONS = [
 ];
 
 export const COUNTRY_OPTIONS = [
-  { value: "es", label: "Spain · EMEA" },
-  { value: "uk", label: "United Kingdom · EMEA" },
-  { value: "us", label: "United States · AMER" },
-  { value: "ae", label: "United Arab Emirates · MEA" },
-  { value: "sg", label: "Singapore · APAC" },
+  { value: "es", label: "Spain" },
+  { value: "uk", label: "United Kingdom" },
+  { value: "ie", label: "Ireland" },
+  { value: "fr", label: "France" },
+  { value: "de", label: "Germany" },
+  { value: "it", label: "Italy" },
+  { value: "pt", label: "Portugal" },
+  { value: "us", label: "United States" },
+  { value: "ae", label: "United Arab Emirates" },
+  { value: "sg", label: "Singapore" },
+  { value: "other", label: "Other" },
+];
+
+export const PMS_ACCESS_OPTIONS: Array<{
+  value: Exclude<PmsAccessMethod, "">;
+  label: string;
+  hint?: string;
+}> = [
+  { value: "interface", label: "Existing interface / integration" },
+  { value: "sftp", label: "SFTP or file transfer" },
+  { value: "api", label: "API" },
+  { value: "onprem", label: "On-premise system" },
+  { value: "unsure", label: "I'm not sure", hint: "That's fine — we'll work this out with your PMS access contact." },
 ];
 
 export const AUTH_METHOD_OPTIONS = [

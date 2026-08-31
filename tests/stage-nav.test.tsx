@@ -1,43 +1,38 @@
 import { render, screen } from "@testing-library/react";
 import { usePathname } from "next/navigation";
 import { describe, expect, it, vi } from "vitest";
-import { StageNav } from "@/components/implementation/StageNav";
-import { IntakeProvider } from "@/components/intake/IntakeProvider";
+import { CustomerShell } from "@/components/implementation/CustomerShell";
 import { IMPLEMENTATION_STAGES } from "@/lib/stages";
 
-describe("StageNav", () => {
-  it("renders navigable links for the three customer stages only", () => {
-    render(
-      <IntakeProvider>
-        <StageNav />
-      </IntakeProvider>,
-    );
-
-    expect(
-      screen.getByRole("navigation", { name: "Implementation stages" }),
-    ).toBeInTheDocument();
-    expect(IMPLEMENTATION_STAGES).toHaveLength(3);
-
-    expect(screen.getByRole("link", { name: /property & pms/i })).toHaveAttribute(
-      "href",
-      "/implementation/property",
-    );
-    expect(screen.queryByText(/discovery/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/validation/i)).not.toBeInTheDocument();
-  });
-
-  it("marks the current stage as the active page", () => {
+describe("customer setup stages", () => {
+  it("renders the four customer stages only", () => {
     vi.mocked(usePathname).mockReturnValue("/implementation/property");
 
     render(
-      <IntakeProvider>
-        <StageNav />
-      </IntakeProvider>,
+      <CustomerShell>
+        <p>Setup</p>
+      </CustomerShell>,
     );
 
-    expect(screen.getByRole("link", { name: /property & pms/i })).toHaveAttribute(
-      "aria-current",
-      "page",
+    expect(IMPLEMENTATION_STAGES).toHaveLength(4);
+    expect(screen.getByText("Property")).toBeInTheDocument();
+    expect(screen.getByText("Contacts")).toBeInTheDocument();
+    expect(screen.getByText("PMS")).toBeInTheDocument();
+    expect(screen.getByText("Review")).toBeInTheDocument();
+    expect(screen.queryByText(/discovery/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/validation/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/connect pms/i)).not.toBeInTheDocument();
+  });
+
+  it("marks the current stage as active", () => {
+    vi.mocked(usePathname).mockReturnValue("/implementation/contacts");
+
+    render(
+      <CustomerShell>
+        <p>Setup</p>
+      </CustomerShell>,
     );
+
+    expect(screen.getByText(/step 2 of 4/i)).toBeInTheDocument();
   });
 });

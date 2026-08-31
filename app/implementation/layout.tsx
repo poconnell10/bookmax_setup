@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
-import { AppShell } from "@/components/layout/AppShell";
+import { IntakeProvider } from "@/components/intake/IntakeProvider";
 
 export default function ImplementationLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  return <AppShell>{children}</AppShell>;
+  return <IntakeProvider>{children}</IntakeProvider>;
 }

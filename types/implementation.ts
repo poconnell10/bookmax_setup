@@ -1,4 +1,4 @@
-export type StageId = "property" | "connect" | "summary";
+export type StageId = "property" | "contacts" | "pms" | "review";
 
 export type ImplementationStage = {
   id: StageId;
@@ -22,6 +22,8 @@ export type PmsOption = {
 
 export type ConnectionMethod = "api" | "sftp" | "unsure";
 
+export type PmsAccessMethod = "interface" | "sftp" | "api" | "onprem" | "unsure" | "";
+
 export type AvailabilityAnswer = "Yes" | "No" | "Not sure" | "";
 
 export type CredentialStatus = "not_received" | "received";
@@ -44,6 +46,10 @@ export type IntakeState = {
   pmsVersion: string;
   technicalContactMobile: string;
   connectionMethod: ConnectionMethod | null;
+  pmsAccessMethod: PmsAccessMethod;
+  samePmsContact: boolean;
+  propertyLocked: boolean;
+  accessVerified: boolean;
   apiUrl: string;
   apiCredentialsAvailable: AvailabilityAnswer;
   transferDetailsAvailable: AvailabilityAnswer;
@@ -70,10 +76,22 @@ export type IntakeState = {
   status: "draft" | "submitted";
 };
 
+export const SUBMISSION_STATUSES = [
+  "Submitted",
+  "Under Review",
+  "Information Required",
+  "Ready",
+] as const;
+
+export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
+
 export type SubmissionRecord = {
   submission_id: string;
   organisation: string;
   properties: string[];
+  country: string;
+  primary_contact: string;
+  primary_contact_email: string;
   pms: string;
   pms_version: string;
   pms_type: string;
@@ -86,7 +104,7 @@ export type SubmissionRecord = {
   credentials_status: CredentialStatus;
   submitted_at: string;
   submitted_by: string;
-  status: "submitted";
+  status: SubmissionStatus;
   created_at: string;
   updated_at: string;
 };

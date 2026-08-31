@@ -8,11 +8,12 @@ vi.mock("server-only", () => ({}));
 
 vi.mock("next/navigation", () => ({
   usePathname: vi.fn(() => "/implementation/property"),
-  useRouter: () => ({
+  useRouter: vi.fn(() => ({
     push: vi.fn(),
     replace: vi.fn(),
     prefetch: vi.fn(),
-  }),
+  })),
+  useSearchParams: vi.fn(() => new URLSearchParams()),
 }));
 
 vi.mock("next/link", () => ({
@@ -29,6 +30,10 @@ vi.mock("next/link", () => ({
 afterEach(() => {
   if (typeof document !== "undefined") {
     cleanup();
+  }
+  if (typeof window !== "undefined") {
+    window.sessionStorage.clear();
+    window.localStorage.clear();
   }
   vi.mocked(usePathname).mockReturnValue("/implementation/property");
 });

@@ -9,10 +9,17 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { createInitialIntakeState, stamp, toDraftPayload, toSubmissionRecord } from "@/lib/implementation/selectors";
+import {
+  createInitialIntakeState,
+  stamp,
+  submitBlockers,
+  toDraftPayload,
+  toSubmissionRecord,
+} from "@/lib/implementation/selectors";
 import type { IntakeState } from "@/types/implementation";
 
 const DRAFT_KEY = "bookmax.draftId";
+const SUBMITTED_KEY = "bookmax.submitted";
 
 type IntakeContextValue = {
   state: IntakeState;
@@ -46,8 +53,33 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function IntakeProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<IntakeState>(createInitialIntakeState);
+export function IntakeProvider({
+  children,
+  initialState,
+}: {
+  children: ReactNode;
+  initialState?: IntakeState;
+}) {
+  const [state, setState] = useState<IntakeState>(() => {
+    if (initialState) {
+      return initialState;
+    }
+
+    if (typeof window === "undefined") {
+      return createInitialIntakeState();
+    }
+
+    try {
+      const saved = window.localStorage.getItem(SUBMITTED_KEY);
+      if (saved) {
+        return JSON.parse(saved) as IntakeState;
+      }
+    } catch {
+      // ignore malformed local POC state
+    }
+
+    return createInitialIntakeState();
+  });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const notify = useCallback((message: string) => {
@@ -130,6 +162,15 @@ export function IntakeProvider({ children }: { children: ReactNode }) {
   }, [notify, state]);
 
   const submitSetup = useCallback(async () => {
+    if (state.submitted && state.submissionId) {
+      return;
+    }
+
+    const blockers = submitBlockers(state);
+    if (blockers.length > 0) {
+      throw new Error(blockers[0]);
+    }
+
     const submittedAt = stamp();
     const record = toSubmissionRecord(
       { ...state, submittedBy: state.contactName },
@@ -143,6 +184,7 @@ export function IntakeProvider({ children }: { children: ReactNode }) {
       ...state,
       submitted: true,
       status: "submitted",
+      connectionDetailsStatus: "complete",
       submittedAt,
       submittedBy: state.contactName,
       submissionId: result.submissionId,
@@ -151,6 +193,11 @@ export function IntakeProvider({ children }: { children: ReactNode }) {
       draft: toDraftPayload(submittedState),
     });
     window.sessionStorage.setItem(DRAFT_KEY, draft.draftId);
+    try {
+      window.localStorage.setItem(SUBMITTED_KEY, JSON.stringify({ ...submittedState, draftId: draft.draftId }));
+    } catch {
+      // private browsing can block localStorage
+    }
     setState({ ...submittedState, draftId: draft.draftId });
   }, [state]);
 
@@ -221,8 +268,12 @@ export function IntakeProvider({ children }: { children: ReactNode }) {
   );
 }
 
+export function useIntakeOptional() {
+  return useContext(IntakeContext);
+}
+
 export function useIntake() {
-  const value = useContext(IntakeContext);
+  const value = useIntakeOptional();
 
   if (!value) {
     throw new Error("useIntake must be used within IntakeProvider");

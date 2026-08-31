@@ -1,5 +1,8 @@
-import { redirect } from "next/navigation";
-
 export default function Home() {
-  redirect("/implementation/property");
+  return (
+    <main className="site-home">
+      <h1>BookMax</h1>
+      <p>BookMax website. Implementation setup is a separate application at /implementation.</p>
+    </main>
+  );
 }

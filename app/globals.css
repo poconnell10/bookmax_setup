@@ -25,6 +25,11 @@
   --font-sans: var(--font-inter);
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

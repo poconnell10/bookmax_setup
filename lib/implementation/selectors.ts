@@ -1,7 +1,11 @@
-import { findPms } from "@/lib/implementation/catalogue";
+import { COUNTRY_OPTIONS, findPms } from "@/lib/implementation/catalogue";
 import type {
+  ConnectionMethod,
   CredentialLabel,
+  HostingKind,
   IntakeState,
+  PmsAccessMethod,
+  StageId,
   SubmissionRecord,
 } from "@/types/implementation";
 
@@ -28,6 +32,10 @@ export function createInitialIntakeState(): IntakeState {
     pmsVersion: "",
     technicalContactMobile: "",
     connectionMethod: null,
+    pmsAccessMethod: "",
+    samePmsContact: false,
+    propertyLocked: true,
+    accessVerified: false,
     apiUrl: "",
     apiCredentialsAvailable: "",
     transferDetailsAvailable: "",
@@ -69,7 +77,15 @@ export function hostingNeedsConfirmation(state: IntakeState): boolean {
 }
 
 export function isOhipRoute(state: IntakeState): boolean {
-  return state.pmsId === "operacloud";
+  return state.pmsId === "operacloud" || state.pmsId === "oraclehosp";
+}
+
+export function isOperaOnPrem(state: IntakeState): boolean {
+  return state.pmsId === "operaonprem";
+}
+
+export function isOperaCloudFamily(state: IntakeState): boolean {
+  return isOhipRoute(state);
 }
 
 export function isBrandRoute(state: IntakeState): boolean {
@@ -139,17 +155,37 @@ export function credentialLabel(state: IntakeState): CredentialLabel | null {
 }
 
 export function propertyStepComplete(state: IntakeState): boolean {
-  const pms = selectedPms(state);
-  const otherOk = state.pmsId !== "other" || state.otherPmsName.trim().length > 0;
+  return Boolean(filledProperties(state)[0] && state.country);
+}
 
+export function contactsStepComplete(state: IntakeState): boolean {
   return Boolean(
-    pms &&
-      state.hosting &&
-      otherOk &&
+    state.contactName.trim() &&
+      looksLikeEmail(state.contactEmail) &&
       state.technicalContact.trim() &&
-      state.technicalContactEmail.trim() &&
-      filledProperties(state)[0],
+      looksLikeEmail(state.technicalContactEmail),
   );
+}
+
+export function pmsStepComplete(state: IntakeState): boolean {
+  const pms = selectedPms(state);
+  if (!pms) {
+    return false;
+  }
+
+  if (pms.id === "other" && !state.otherPmsName.trim()) {
+    return false;
+  }
+
+  if (isOperaCloudFamily(state)) {
+    return Boolean((state.hotelId || state.propertyCode).trim());
+  }
+
+  if (isOperaOnPrem(state)) {
+    return Boolean((state.propertyCode || state.hotelId).trim() && state.pmsAccessMethod);
+  }
+
+  return Boolean(state.pmsAccessMethod);
 }
 
 export function ohipConnectionComplete(state: IntakeState): boolean {
@@ -195,16 +231,42 @@ export function connectStepComplete(state: IntakeState): boolean {
   return onPremConnectionComplete(state);
 }
 
-export function canReachStage(state: IntakeState, stage: "property" | "connect" | "summary") {
+export function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+export function submitBlockers(state: IntakeState): string[] {
+  const blockers: string[] = [];
+
+  if (!canReachStage(state, "review")) {
+    blockers.push("Required fields are missing.");
+  }
+
+  if (state.contactEmail.trim() && !looksLikeEmail(state.contactEmail)) {
+    blockers.push("Primary contact email must look like an email.");
+  }
+
+  if (state.technicalContactEmail.trim() && !looksLikeEmail(state.technicalContactEmail)) {
+    blockers.push("PMS access contact email must look like an email.");
+  }
+
+  return blockers;
+}
+
+export function canReachStage(state: IntakeState, stage: StageId) {
   if (stage === "property") {
     return true;
   }
 
-  if (stage === "connect") {
+  if (stage === "contacts") {
     return propertyStepComplete(state);
   }
 
-  return propertyStepComplete(state) && state.connectionDetailsStatus === "complete";
+  if (stage === "pms") {
+    return propertyStepComplete(state) && contactsStepComplete(state);
+  }
+
+  return propertyStepComplete(state) && contactsStepComplete(state) && pmsStepComplete(state);
 }
 
 export function pmsDisplayName(state: IntakeState): string {
@@ -254,91 +316,132 @@ export function environmentLabel(state: IntakeState): string {
 }
 
 export function connectionMethodLabel(state: IntakeState): string {
-  if (isOhipRoute(state)) {
-    return "OHIP";
+  if (isOperaCloudFamily(state)) {
+    return "OPERA Cloud";
   }
 
-  if (state.connectionMethod === "api") {
-    return "API / Integration";
-  }
+  return pmsAccessMethodLabel(state.pmsAccessMethod) || "";
+}
 
-  if (state.connectionMethod === "sftp") {
-    return "SFTP / File Transfer";
+export function pmsAccessMethodLabel(method: PmsAccessMethod | ConnectionMethod | null): string {
+  if (method === "interface") {
+    return "Existing interface / integration";
   }
-
-  if (state.connectionMethod === "unsure") {
+  if (method === "sftp") {
+    return "SFTP or file transfer";
+  }
+  if (method === "api") {
+    return "API";
+  }
+  if (method === "onprem") {
+    return "On-premise system";
+  }
+  if (method === "unsure") {
     return "To be confirmed";
   }
-
   return "";
 }
 
-export function suppliedConnectionDetails(state: IntakeState): Record<string, string> {
+export type ReviewSnapshot = {
+  property: string;
+  country: string;
+  organisation: string;
+  primaryName: string;
+  primaryEmail: string;
+  pmsContactName: string;
+  pmsContactEmail: string;
+  pms: string;
+  hosting: string;
+  hotelId: string;
+  enterpriseId: string;
+  accessMethod: string;
+  details: Record<string, string>;
+};
+
+export function reviewSnapshot(state: IntakeState): ReviewSnapshot {
+  const country =
+    COUNTRY_OPTIONS.find((item) => item.value === state.country)?.label || state.country;
+  const primaryName = state.contactName.trim();
+  const primaryEmail = state.contactEmail.trim();
+  const pmsContactName = (state.samePmsContact ? state.contactName : state.technicalContact).trim();
+  const pmsContactEmail = (
+    state.samePmsContact ? state.contactEmail : state.technicalContactEmail
+  ).trim();
+  const hotelId = (state.hotelId || state.propertyCode).trim();
+  const enterpriseId = isOperaCloudFamily(state) ? state.enterpriseId.trim() : "";
+  const accessMethod = pmsAccessMethodLabel(state.pmsAccessMethod);
+  const hostingLabelValue = hostingLabel(state);
+  const hosting =
+    hostingLabelValue && !isOperaCloudFamily(state) && !isOperaOnPrem(state)
+      ? hostingLabelValue
+      : "";
+
   const details: Record<string, string> = {};
-
-  if (isOhipRoute(state)) {
-    if (environmentLabel(state)) {
-      details.Environment = environmentLabel(state);
-    }
-    if (state.enterpriseId.trim()) {
-      details["Enterprise ID"] = state.enterpriseId.trim();
-    }
-    if (state.hotelId.trim()) {
-      details["Hotel ID"] = state.hotelId.trim();
-    }
-    if (state.gatewayUrl.trim()) {
-      details["Gateway URL"] = state.gatewayUrl.trim();
-    }
-    if (state.authMethod) {
-      details["Authentication Method"] = state.authMethod;
-    }
-    if (state.oauthScope.trim()) {
-      details["OAuth Scope"] = state.oauthScope.trim();
-    }
-    if (state.chainCode.trim()) {
-      details["Chain Code"] = state.chainCode.trim();
-    }
-    if (state.ohipAdmin.trim()) {
-      details["OHIP Administrator"] = state.ohipAdmin.trim();
-    }
-    if (state.ohipAdminEmail.trim()) {
-      details["Administrator Email"] = state.ohipAdminEmail.trim();
-    }
-    return details;
+  if (hotelId) {
+    details["Property / Hotel ID"] = hotelId;
+  }
+  if (enterpriseId) {
+    details["OHIP Enterprise ID"] = enterpriseId;
+  }
+  if (accessMethod) {
+    details["Access method"] = accessMethod;
   }
 
-  if (isBrandRoute(state)) {
-    if (state.propertyCode.trim()) {
-      details["Brand property code"] = state.propertyCode.trim();
-    }
-    if (state.brandSponsor.trim()) {
-      details["Brand sponsor"] = state.brandSponsor.trim();
-    }
-    return details;
-  }
+  return {
+    property: filledProperties(state)[0] || "",
+    country,
+    organisation: state.organisation.trim(),
+    primaryName,
+    primaryEmail,
+    pmsContactName,
+    pmsContactEmail,
+    pms: pmsDisplayName(state),
+    hosting,
+    hotelId,
+    enterpriseId,
+    accessMethod,
+    details,
+  };
+}
 
-  if (isGenericCloudApi(state)) {
-    if (state.propertyCode.trim()) {
-      details["Property / hotel code"] = state.propertyCode.trim();
-    }
-    if (state.pmsAdmin.trim()) {
-      details["PMS administrator"] = state.pmsAdmin.trim();
-    }
-    return details;
-  }
+export function suppliedConnectionDetails(state: IntakeState): Record<string, string> {
+  return reviewSnapshot(state).details;
+}
 
-  const method = connectionMethodLabel(state);
-  if (method) {
-    details["Connection Method"] = method;
+export function hostingFromPms(pmsId: string | null): HostingKind | "" {
+  const pms = findPms(pmsId);
+  if (!pms || pms.host === "hybrid") {
+    return pms?.host === "hybrid" ? "hybrid" : "";
   }
-  if (state.apiUrl.trim()) {
-    details["API URL"] = state.apiUrl.trim();
-  }
-  if (state.sftpHost.trim()) {
-    details["SFTP Host"] = state.sftpHost.trim();
-  }
+  return pms.host;
+}
 
-  return details;
+export function fieldsClearedOnPmsChange(): Partial<IntakeState> {
+  return {
+    otherPmsName: "",
+    enterpriseId: "",
+    hotelId: "",
+    propertyCode: "",
+    pmsAccessMethod: "",
+    connectionMethod: null,
+    gatewayUrl: "",
+    authMethod: "",
+    oauthScope: "",
+    chainCode: "",
+    environment: "",
+    pmsVersion: "",
+    brandSponsor: "",
+    pmsAdmin: "",
+  };
+}
+
+export function maskEmail(email: string): string {
+  const trimmed = email.trim();
+  const at = trimmed.indexOf("@");
+  if (at < 1) {
+    return trimmed || "your work email";
+  }
+  return `${trimmed[0]}••••@${trimmed.slice(at + 1)}`;
 }
 
 export function toDraftPayload(state: IntakeState): IntakeState {
@@ -348,25 +451,28 @@ export function toDraftPayload(state: IntakeState): IntakeState {
 }
 
 export function toSubmissionRecord(state: IntakeState, submittedAt: string): SubmissionRecord {
-  const pms = selectedPms(state);
+  const snap = reviewSnapshot(state);
 
   return {
     submission_id: state.submissionId || `BMX-${Date.now()}`,
-    organisation: state.organisation.trim(),
+    organisation: snap.organisation,
     properties: filledProperties(state),
-    pms: pmsDisplayName(state),
-    pms_version: state.pmsVersion.trim() || (pms?.host === "cloud" ? "Cloud" : ""),
-    pms_type: hostingLabel(state),
-    technical_contact: state.technicalContact.trim(),
-    technical_contact_email: state.technicalContactEmail.trim(),
+    country: snap.country,
+    primary_contact: snap.primaryName,
+    primary_contact_email: snap.primaryEmail,
+    pms: snap.pms,
+    pms_version: "",
+    pms_type: snap.hosting,
+    technical_contact: snap.pmsContactName,
+    technical_contact_email: snap.pmsContactEmail,
     technical_contact_mobile: state.technicalContactMobile.trim(),
-    connection_method: connectionMethodLabel(state) || selectedPms(state)?.integration || "",
-    connection_details: suppliedConnectionDetails(state),
+    connection_method: snap.accessMethod,
+    connection_details: snap.details,
     connection_details_status: state.connectionDetailsStatus,
     credentials_status: state.credentialsStatus,
     submitted_at: submittedAt,
-    submitted_by: state.contactName.trim() || "Customer",
-    status: "submitted",
+    submitted_by: snap.primaryName || "Customer",
+    status: "Submitted",
     created_at: submittedAt,
     updated_at: submittedAt,
   };

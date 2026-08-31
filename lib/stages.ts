@@ -3,23 +3,33 @@ import type { ImplementationStage } from "@/types/implementation";
 export const IMPLEMENTATION_STAGES: readonly ImplementationStage[] = [
   {
     id: "property",
-    label: "Property & PMS",
+    label: "Property",
     href: "/implementation/property",
-    subtitle: "Property details",
+    subtitle: "Your hotel",
   },
   {
-    id: "connect",
-    label: "Connect PMS",
-    href: "/implementation/connect",
-    subtitle: "Connection details",
+    id: "contacts",
+    label: "Contacts",
+    href: "/implementation/contacts",
+    subtitle: "Who we work with",
   },
   {
-    id: "summary",
-    label: "Summary",
-    href: "/implementation/summary",
-    subtitle: "Review & submit",
+    id: "pms",
+    label: "PMS",
+    href: "/implementation/pms",
+    subtitle: "Your system",
+  },
+  {
+    id: "review",
+    label: "Review",
+    href: "/implementation/review",
+    subtitle: "Check and send",
   },
 ];
+
+export function isSetupStagePath(pathname: string): boolean {
+  return IMPLEMENTATION_STAGES.some((stage) => stage.href === pathname);
+}
 
 export function getStage(id: ImplementationStage["id"]): ImplementationStage {
   const stage = IMPLEMENTATION_STAGES.find((item) => item.id === id);

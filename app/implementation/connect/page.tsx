@@ -1,10 +1,5 @@
-import type { Metadata } from "next";
-import { ConnectStep } from "@/components/intake/ConnectStep";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Connect PMS",
-};
-
-export default function ConnectPage() {
-  return <ConnectStep />;
+export default function ConnectRedirectPage() {
+  redirect("/implementation/pms");
 }
