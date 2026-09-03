@@ -159,12 +159,24 @@ export function propertyStepComplete(state: IntakeState): boolean {
 }
 
 export function contactsStepComplete(state: IntakeState): boolean {
+  const pmsName = (state.samePmsContact ? state.contactName : state.technicalContact).trim();
+  const pmsEmail = (state.samePmsContact ? state.contactEmail : state.technicalContactEmail).trim();
   return Boolean(
     state.contactName.trim() &&
       looksLikeEmail(state.contactEmail) &&
-      state.technicalContact.trim() &&
-      looksLikeEmail(state.technicalContactEmail),
+      pmsName &&
+      looksLikeEmail(pmsEmail),
   );
+}
+
+export function pmsChosen(state: IntakeState): boolean {
+  if (!state.pmsId) {
+    return false;
+  }
+  if (state.pmsId === "other") {
+    return Boolean(state.otherPmsName.trim());
+  }
+  return true;
 }
 
 export function pmsStepComplete(state: IntakeState): boolean {

@@ -24,7 +24,7 @@ describe("implementation shell", () => {
   it("renders the property screen, not a placeholder", () => {
     renderIntake(<PropertyScreen />);
 
-    expect(screen.getByRole("heading", { name: "Your property" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Set up your property for BookMax" })).toBeInTheDocument();
     expect(screen.getByText("Hotel ABC Barcelona")).toBeInTheDocument();
     expect(screen.queryByText("Property setup will be designed next.")).not.toBeInTheDocument();
   });

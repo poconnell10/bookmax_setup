@@ -4,9 +4,8 @@ import type { ReactElement } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useRouter } from "next/navigation";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import Home from "@/app/page";
-import { ImplementationSignIn, normalizeOtp } from "@/components/implementation/ImplementationSignIn";
 import { LoginScreen } from "@/components/account/LoginScreen";
+import { ImplementationSignIn, normalizeOtp } from "@/components/implementation/ImplementationSignIn";
 import { PropertyScreen } from "@/components/setup/PropertyScreen";
 import { ContactsScreen } from "@/components/setup/ContactsScreen";
 import { PmsScreen } from "@/components/setup/PmsScreen";
@@ -41,6 +40,41 @@ function operaCloudState(overrides: Partial<IntakeState> = {}): IntakeState {
   };
 }
 
+function stubOtpApis(options?: { verifyOk?: boolean }) {
+  const verifyOk = options?.verifyOk ?? true;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/implementation/otp/send")) {
+        return Response.json({ ok: true });
+      }
+      if (url.includes("/api/implementation/otp/verify")) {
+        const body = init?.body ? JSON.parse(String(init.body)) : {};
+        if (!verifyOk || String(body.code || "").length !== 6) {
+          return Response.json(
+            { ok: false, code: "otp_invalid", error: "That code is invalid or has expired." },
+            { status: 401 },
+          );
+        }
+        return Response.json({
+          ok: true,
+          intakePatch: {
+            accessVerified: true,
+            contactEmail: "elena.marquez@hotelabc.com",
+            contactName: "Elena Márquez",
+            organisation: "Hotel ABC Group",
+            country: "es",
+            properties: ["Hotel ABC Barcelona"],
+            propertyLocked: true,
+          },
+        });
+      }
+      return Response.json({ ok: false }, { status: 404 });
+    }),
+  );
+}
+
 describe("customer implementation flow", () => {
   const push = vi.fn();
 
@@ -51,28 +85,37 @@ describe("customer implementation flow", () => {
       replace: vi.fn(),
       prefetch: vi.fn(),
     } as never);
+    stubOtpApis();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("Test 1 — OTP then OPERA Cloud with a separate PMS access contact", async () => {
+  it("Test 1 — OTP then setup, without password or prototype controls", async () => {
     renderSetup(<ImplementationSignIn />);
 
-    expect(screen.getByRole("heading", { name: "Welcome to BookMax" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Sign in to continue" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Verification code")).toBeInTheDocument();
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue with Microsoft" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Email me a sign-in link" })).not.toBeInTheDocument();
     expect(screen.queryByText(/prototype states/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/create a password/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/discovery/i)).not.toBeInTheDocument();
 
     const input = screen.getByLabelText("Verification code");
     fireEvent.change(input, { target: { value: "123456" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    expect(push).toHaveBeenCalledWith("/implementation/property");
+    await waitFor(() => {
+      expect(push).toHaveBeenCalledWith("/implementation/property");
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/implementation/otp/verify",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
-  it("OTP paste, typing and autofill all resolve to a 6-digit code", () => {
+  it("OTP paste, typing and autofill all resolve to a 6-digit code", async () => {
     expect(normalizeOtp("12 34-56abc")).toBe("123456");
     expect(normalizeOtp("99")).toBe("99");
 
@@ -86,7 +129,21 @@ describe("customer implementation flow", () => {
     expect(push).not.toHaveBeenCalled();
     fireEvent.change(input, { target: { value: "847291" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    expect(push).toHaveBeenCalledWith("/implementation/property");
+    await waitFor(() => {
+      expect(push).toHaveBeenCalledWith("/implementation/property");
+    });
+  });
+
+  it("rejects an invalid OTP without navigating to setup", async () => {
+    stubOtpApis({ verifyOk: false });
+    renderSetup(<ImplementationSignIn />);
+    const input = screen.getByLabelText("Verification code");
+    fireEvent.change(input, { target: { value: "000000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => {
+      expect(screen.getByText(/invalid or has expired/i)).toBeInTheDocument();
+    });
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("Test 2 — OPERA Cloud without Enterprise ID is not blocked", () => {
@@ -115,10 +172,9 @@ describe("customer implementation flow", () => {
       }),
     );
 
-    fireEvent.click(screen.getByRole("option", { name: /opera \/ opera 5/i }));
-    expect(screen.getByLabelText("Property / Hotel Code")).toBeInTheDocument();
+    expect(screen.getByLabelText(/property \/ hotel code/i)).toBeInTheDocument();
     expect(screen.getByText("How can data be provided from your PMS today?")).toBeInTheDocument();
-    expect(screen.queryByLabelText("OHIP Enterprise ID")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/ohip enterprise id/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/client secret/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/gateway url/i)).not.toBeInTheDocument();
   });
@@ -168,7 +224,7 @@ describe("customer implementation flow", () => {
   it("Test 8 — review edit returns without requiring a full restart", () => {
     renderSetup(<ReviewScreen />, operaCloudState());
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Change" })[0]);
     expect(push).toHaveBeenCalledWith("/implementation/property?from=review");
     expect(screen.getByText("Hotel ABC Barcelona")).toBeInTheDocument();
     expect(screen.getByText(/jane smith/i)).toBeInTheDocument();
@@ -176,7 +232,8 @@ describe("customer implementation flow", () => {
 
   it("Test 9 — property, contacts, PMS and success screens render for a small viewport", () => {
     renderSetup(<PropertyScreen />);
-    expect(screen.getByRole("heading", { name: "Your property" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Set up your property for BookMax" })).toBeInTheDocument();
+    expect(screen.getByText("Your property")).toBeInTheDocument();
     expect(screen.getByText("From your BookMax agreement")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Something incorrect?" })).toBeInTheDocument();
   });
@@ -200,7 +257,7 @@ describe("customer implementation flow", () => {
     );
 
     renderSetup(<ReviewScreen />, operaCloudState());
-    fireEvent.click(screen.getByRole("button", { name: "Start BookMax Implementation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start BookMax implementation" }));
     await waitFor(() => {
       expect(push).toHaveBeenCalledWith("/implementation/thanks");
     });
@@ -212,7 +269,7 @@ describe("customer implementation flow", () => {
       vi.fn(async () => ({ ok: false, json: async () => ({ error: "fail" }) })),
     );
     renderSetup(<ReviewScreen />, operaCloudState());
-    fireEvent.click(screen.getByRole("button", { name: "Start BookMax Implementation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start BookMax implementation" }));
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/could not save/i);
     });
@@ -248,16 +305,17 @@ describe("customer implementation flow", () => {
 
   it("success copy does not request credentials or offer a status loop", () => {
     renderSetup(<SuccessScreen />, operaCloudState({ submitted: true, properties: ["Hotel ABC Barcelona"] }));
-    expect(screen.getByRole("heading", { name: "Thank you" })).toBeInTheDocument();
-    expect(screen.getByText(/setup details have been received/i)).toBeInTheDocument();
-    expect(screen.getByText(/bookmax implementation team will contact you/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "You're all set." })).toBeInTheDocument();
+    expect(screen.getByText(/we've received the information for/i)).toBeInTheDocument();
+    expect(screen.getByText(/hotel abc barcelona/i)).toBeInTheDocument();
+    expect(screen.getByText(/no further action is required right now/i)).toBeInTheDocument();
     expect(screen.queryByText(/view implementation status/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/provide api credentials/i)).not.toBeInTheDocument();
   });
 
   it("does not show a returning-customer status journey", () => {
     renderSetup(<ImplementationSignIn />, operaCloudState({ submitted: true }));
-    expect(screen.getByRole("heading", { name: "Thank you" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "You're all set." })).toBeInTheDocument();
     expect(screen.queryByText(/welcome back/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/view implementation status/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/waiting for pms access/i)).not.toBeInTheDocument();
@@ -308,12 +366,10 @@ describe("customer implementation flow", () => {
     expect(existsSync(path.join(intake, "SummaryStep.tsx"))).toBe(false);
     expect(existsSync(path.join(intake, "ThanksView.tsx"))).toBe(false);
     expect(existsSync(path.join(process.cwd(), "components/implementation/StageNav.tsx"))).toBe(false);
+    expect(existsSync(path.join(process.cwd(), "components/setup/AccessScreen.tsx"))).toBe(false);
   });
 
   it("existing BookMax website routes still work", () => {
-    const { unmount } = render(<Home />);
-    expect(screen.getByText(/bookmax website/i)).toBeInTheDocument();
-    unmount();
     render(<LoginScreen />);
     expect(screen.getByRole("heading", { name: "Welcome back" })).toBeInTheDocument();
   });

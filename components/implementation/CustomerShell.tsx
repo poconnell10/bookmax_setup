@@ -1,68 +1,76 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { BrandMark } from "@/components/implementation/BrandMark";
-import { IMPLEMENTATION_STAGES } from "@/lib/stages";
+import { useIntake } from "@/components/intake/IntakeProvider";
+import { IMPLEMENTATION_STAGES, isSetupStagePath } from "@/lib/stages";
+import { canReachStage } from "@/lib/implementation/selectors";
+import type { StageId } from "@/types/implementation";
 
 export function CustomerShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { state } = useIntake();
   const currentIndex = IMPLEMENTATION_STAGES.findIndex((stage) => stage.href === pathname);
-  const current = IMPLEMENTATION_STAGES[currentIndex];
   const isThanks = pathname.startsWith("/implementation/thanks");
+  const showSteps = isSetupStagePath(pathname) && !isThanks;
 
   return (
-    <div className="bmx-auth">
-      <aside className="brandside">
-        <div className="bmark">
+    <div className="bmx-setup">
+      <div className="top">
+        <div className="brand">
           <BrandMark />
           <span className="wm">BookMax</span>
-          <span className="pd">Implementation</span>
+          <span className="who">{state.contactEmail || "—"}</span>
         </div>
-        <div className="bpitch">
-          <h2>Start your BookMax implementation</h2>
-          <p>
-            BookMax is a pre-arrival upsell solution. We need a few basic details about your property
-            and PMS so our implementation team can get started. Takes about 2 minutes.
-          </p>
-          <p className="bpitch-note">
-            You will not be asked for configuration we can retrieve from your PMS.
-          </p>
-          <div className="bsteps">
-            {IMPLEMENTATION_STAGES.map((stage, index) => (
-              <span
-                key={stage.id}
-                className={`bs${index === currentIndex ? " on" : ""}${isThanks ? " on" : ""}`}
-              >
-                <span className="bn">{index + 1}</span>
-                <span className="bt">
-                  <b>{stage.label}</b>
-                  {stage.subtitle}
-                </span>
-              </span>
-            ))}
-          </div>
+        <div className="topR">
+          {state.draftId && !isThanks ? (
+            <span className="saved">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+              Saved — you can finish later
+            </span>
+          ) : null}
         </div>
-        <div className="bfoot">
-          <span>About 2 minutes</span>
-          <span>Privacy</span>
-          <span>Contact implementation</span>
-        </div>
-      </aside>
-      <main className="formside">
-        <div className="shell shell-wide">
-          <div className="mobmark">
-            <BrandMark />
-            <span className="wm">BookMax Implementation</span>
-          </div>
-          {current ? (
-            <div className="mprog">
-              Step {currentIndex + 1} of {IMPLEMENTATION_STAGES.length} · {current.label}
+      </div>
+      <div className="scroll">
+        <div className="wrap">
+          {showSteps ? (
+            <div className="steps">
+              {IMPLEMENTATION_STAGES.map((stage, index) => {
+                const done = index < currentIndex;
+                const on = index === currentIndex;
+                const can = canReachStage(state, stage.id as StageId) && index !== currentIndex;
+                return (
+                  <span key={stage.id} className={`st${on ? " on" : done ? " done" : ""}`}>
+                    <button
+                      type="button"
+                      className="stb"
+                      disabled={!can}
+                      onClick={() => router.push(stage.href)}
+                    >
+                      <span className="stn">
+                        {done ? (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4">
+                            <path d="M20 6L9 17l-5-5" />
+                          </svg>
+                        ) : (
+                          index + 1
+                        )}
+                      </span>
+                      <span className="stl">{stage.label}</span>
+                    </button>
+                    {index < IMPLEMENTATION_STAGES.length - 1 ? <span className="stbar" /> : null}
+                  </span>
+                );
+              })}
             </div>
           ) : null}
           {children}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

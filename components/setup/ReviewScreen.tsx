@@ -1,9 +1,15 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIntake } from "@/components/intake/IntakeProvider";
-import { reviewSnapshot, submitBlockers } from "@/lib/implementation/selectors";
+import {
+  isOperaCloudFamily,
+  reviewSnapshot,
+  selectedPms,
+  submitBlockers,
+} from "@/lib/implementation/selectors";
 
 export function ReviewScreen() {
   const router = useRouter();
@@ -12,8 +18,18 @@ export function ReviewScreen() {
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const snap = reviewSnapshot(state);
-  const primaryContact = [snap.primaryName, snap.primaryEmail].filter(Boolean).join(" · ");
-  const pmsContact = [snap.pmsContactName, snap.pmsContactEmail].filter(Boolean).join(" · ");
+  const pms = selectedPms(state);
+  const sameContact =
+    state.samePmsContact ||
+    (snap.pmsContactName === snap.primaryName && snap.pmsContactEmail === snap.primaryEmail);
+  const hosting =
+    pms?.host === "cloud"
+      ? "Cloud"
+      : pms?.host === "onprem"
+        ? "On-premise"
+        : pms?.host === "hybrid"
+          ? "Hybrid"
+          : "To be confirmed";
 
   async function onSubmit() {
     if (submitting.current) {
@@ -38,91 +54,117 @@ export function ReviewScreen() {
   }
 
   return (
-    <section className="view on">
-      <h1>Review your BookMax setup</h1>
-      <p className="sub">
-        Check the details below. You can change anything before sending it to our implementation team.
-      </p>
+    <div>
+      <div className="intro">
+        <h1>Ready to start</h1>
+        <p>This is everything you&apos;re sending us. Change anything that isn&apos;t right.</p>
+      </div>
       <div className="card">
-        <Section
-          title="Property"
-          href="/implementation/property?from=review"
-          rows={[
-            ["Property", snap.property],
-            ["Country", snap.country],
-            snap.organisation ? ["Hotel group", snap.organisation] : null,
-          ]}
-        />
-        <Section
-          title="Contacts"
-          href="/implementation/contacts?from=review"
-          rows={[
-            ["Primary contact", primaryContact],
-            ["PMS access contact", pmsContact],
-          ]}
-        />
-        <Section
-          title="PMS"
-          href="/implementation/pms?from=review"
-          rows={[
-            ["PMS", snap.pms],
-            snap.hosting ? ["Hosting", snap.hosting] : null,
-            snap.hotelId ? ["Property / Hotel ID", snap.hotelId] : null,
-            snap.enterpriseId ? ["OHIP Enterprise ID", snap.enterpriseId] : null,
-            snap.accessMethod ? ["Access method", snap.accessMethod] : null,
-          ]}
-        />
-        <button
-          type="button"
-          className="btn pri"
-          disabled={busy}
-          onClick={() => void onSubmit()}
-        >
-          Start BookMax Implementation
+        <Group title="Property" onEdit={() => router.push("/implementation/property?from=review")}>
+          <Row label="Property" value={snap.property} />
+          {snap.country ? <Row label="Country" value={snap.country} /> : null}
+          {snap.organisation ? <Row label="Hotel brand" value={snap.organisation} /> : null}
+        </Group>
+        <Group title="Contacts" onEdit={() => router.push("/implementation/contacts?from=review")}>
+          <Row
+            label="You"
+            value={
+              <>
+                {snap.primaryName}
+                <br />
+                <span style={{ fontWeight: 500, color: "var(--mut)" }}>{snap.primaryEmail}</span>
+              </>
+            }
+          />
+          <Row
+            label="PMS access"
+            value={
+              <>
+                {snap.pmsContactName}
+                <br />
+                <span style={{ fontWeight: 500, color: "var(--mut)" }}>{snap.pmsContactEmail}</span>
+                {sameContact ? <span className="un"> · same as you</span> : null}
+              </>
+            }
+          />
+        </Group>
+        <Group title="PMS" onEdit={() => router.push("/implementation/pms?from=review")}>
+          <Row
+            label="System"
+            value={
+              <>
+                {snap.pms}
+                {pms?.vendor ? <span className="un"> · {pms.vendor}</span> : null}
+              </>
+            }
+          />
+          {hosting ? <Row label="Hosting" value={<span className="un">{hosting}</span>} /> : null}
+          <Row
+            label="Property / Hotel ID"
+            value={snap.hotelId || <span className="un">We’ll confirm this</span>}
+          />
+          {isOperaCloudFamily(state) ? (
+            <Row
+              label="OHIP Enterprise ID"
+              value={snap.enterpriseId || <span className="un">We’ll confirm this</span>}
+            />
+          ) : null}
+          {snap.accessMethod ? <Row label="Access method" value={snap.accessMethod} /> : null}
+        </Group>
+      </div>
+      <div style={{ marginTop: 18 }}>
+        <button type="button" className="btn pri lg" disabled={busy} onClick={() => void onSubmit()}>
+          Start BookMax implementation
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
         </button>
         {error ? (
-          <div className="err" role="alert" style={{ display: "flex", marginTop: 12 }}>
+          <div className="err" role="alert">
             {error}
           </div>
         ) : null}
-        <button type="button" className="btn gh" onClick={() => router.push("/implementation/pms")}>
+      </div>
+      <div className="nav">
+        <button type="button" className="btn" onClick={() => router.push("/implementation/pms")}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+            <path d="M19 12H5M11 6l-6 6 6 6" />
+          </svg>
           Back
         </button>
+        <span />
       </div>
-    </section>
+    </div>
   );
 }
 
-function Section({
+function Group({
   title,
-  href,
-  rows,
+  onEdit,
+  children,
 }: {
   title: string;
-  href: string;
-  rows: Array<[string, string] | null>;
+  onEdit: () => void;
+  children: ReactNode;
 }) {
-  const router = useRouter();
-  const visible = rows.filter((row): row is [string, string] => Boolean(row && row[1]));
-
   return (
-    <div className="grp">
-      <div className="sechd">
-        <span className="gk" style={{ margin: 0 }}>
-          {title}
-        </span>
-        <button type="button" className="btn sm" onClick={() => router.push(href)}>
-          Edit
+    <div className="rgrp">
+      <div className="rgh">
+        <span className="rgt">{title}</span>
+        <button type="button" className="btn sm" onClick={onEdit}>
+          Change
         </button>
       </div>
-      <div className="subcard" style={{ marginTop: 2 }}>
-        {visible.map(([key, value]) => (
-          <div key={key} className="srow">
-            <span className="sk2">{key}</span>
-            <span className="sv2">{value}</span>
-          </div>
-        ))}
-      </div>
+      <div className="rv">{children}</div>
     </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <span className="rvr">
+      <span className="rk">{label}</span>
+      <span className="rvv">{value}</span>
+    </span>
   );
 }

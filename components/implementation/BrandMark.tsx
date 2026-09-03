@@ -1,6 +1,11 @@
 export function BrandMark({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 120 120" fill="none" aria-hidden="true">
+    <svg
+      className={className}
+      viewBox="0 0 120 120"
+      fill="none"
+      aria-hidden="true"
+    >
       <polyline
         points="16,93 45,66 73,75 104,30"
         stroke="currentColor"

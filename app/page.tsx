@@ -1,8 +1,13 @@
+import type { Metadata } from "next";
+import { Suspense } from "react";
+import { EmailAccessScreen } from "@/components/access/EmailAccessScreen";
+
+export const metadata: Metadata = { title: "Start implementation" };
+
 export default function Home() {
   return (
-    <main className="site-home">
-      <h1>BookMax</h1>
-      <p>BookMax website. Implementation setup is a separate application at /implementation.</p>
-    </main>
+    <Suspense>
+      <EmailAccessScreen />
+    </Suspense>
   );
 }

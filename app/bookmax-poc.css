@@ -1,0 +1,1601 @@
+/* Approved BookMax Implementation Sign In-3 + Setup v3 visual contract. */
+
+.toast {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%) translateY(90px);
+  background: #12141c;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 550;
+  padding: 11px 18px;
+  border-radius: 9px;
+  box-shadow: 0 12px 34px rgba(16, 24, 40, 0.3);
+  transition: 0.25s;
+  opacity: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  pointer-events: none;
+}
+
+.toast.on {
+  transform: translateX(-50%);
+  opacity: 1;
+}
+
+.bmx-auth {
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --dsp: var(--font-display), var(--font);
+  --mono: var(--font-mono), ui-monospace, "JetBrains Mono", monospace;
+  --ink: #141821;
+  --ink-2: #39404e;
+  --mut: #6b7280;
+  --mut-2: #9ca3af;
+  --line: #e8eaef;
+  --line-2: #f1f3f6;
+  --bg: #f7f8fa;
+  --soft: #fafbfc;
+  --blue: #2f6bf0;
+  --blue-bg: #edf3fe;
+  --blue-line: #c5dafb;
+  --green: #12a150;
+  --green-bg: #e8f6ee;
+  --green-line: #a5e0be;
+  --amber: #c2740b;
+  --amber-bg: #fdf3e3;
+  --amber-line: #f0d5a8;
+  --red: #dc2626;
+  --red-bg: #fdecec;
+  --red-line: #f8c6c6;
+  --sb: #12141c;
+  --sb-line: rgba(255, 255, 255, 0.07);
+  --sb-txt: #bcc2cf;
+  --sb-mut: rgba(255, 255, 255, 0.34);
+  --sb-act: #5b93ff;
+  --r: 11px;
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  line-height: 1.55;
+  overflow-x: hidden;
+}
+
+.bmx-auth a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.bmx-auth a:hover {
+  color: #2459cf;
+}
+
+.bmx-auth .brandside {
+  width: 44%;
+  max-width: 520px;
+  flex: none;
+  background: var(--sb);
+  color: #fff;
+  padding: 30px 38px 34px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.bmx-auth .bmark {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.bmx-auth .bmark svg {
+  width: 22px;
+  height: 22px;
+  color: #fff;
+  flex: none;
+}
+
+.bmx-auth .bmark .wm {
+  font-family: var(--dsp);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+
+.bmx-auth .bmark .pd {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sb-act);
+  background: rgba(91, 147, 255, 0.14);
+  padding: 2px 7px;
+  border-radius: 99px;
+  margin-left: 2px;
+}
+
+.bmx-auth .bpitch h2 {
+  font-family: var(--dsp);
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+}
+
+.bmx-auth .bpitch p {
+  font-size: 13.5px;
+  color: var(--sb-txt);
+  margin-top: 12px;
+  max-width: 390px;
+}
+
+.bmx-auth .bsteps {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin-top: 26px;
+}
+
+.bmx-auth .bs {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.bmx-auth .bs .bn {
+  width: 21px;
+  height: 21px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--sb-line);
+  color: var(--sb-txt);
+  font-family: var(--mono);
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  margin-top: 1px;
+}
+
+.bmx-auth .bs.on .bn {
+  background: var(--sb-act);
+  border-color: var(--sb-act);
+  color: #0b1020;
+  font-weight: 700;
+}
+
+.bmx-auth .bs .bt {
+  font-size: 12.5px;
+  color: var(--sb-mut);
+  line-height: 1.45;
+}
+
+.bmx-auth .bs .bt b {
+  color: #fff;
+  font-weight: 600;
+  display: block;
+  font-size: 13px;
+}
+
+.bmx-auth .bs.on .bt {
+  color: var(--sb-txt);
+}
+
+.bmx-auth .bfoot {
+  font-size: 11.5px;
+  color: var(--sb-mut);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.bmx-auth .bfoot a {
+  color: var(--sb-txt);
+}
+
+.bmx-auth .bfoot a:hover {
+  color: #fff;
+}
+
+.bmx-auth .formside {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 34px 26px 40px;
+  background: var(--bg);
+}
+
+.bmx-auth .shell {
+  width: 100%;
+  max-width: 414px;
+}
+
+.bmx-auth .mobmark {
+  display: none;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 22px;
+}
+
+.bmx-auth .mobmark svg {
+  width: 20px;
+  height: 20px;
+  color: var(--ink);
+}
+
+.bmx-auth .mobmark .wm {
+  font-family: var(--dsp);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+.bmx-auth .view {
+  display: none;
+  flex-direction: column;
+}
+
+.bmx-auth .view.on {
+  display: flex;
+}
+
+.bmx-auth h1 {
+  font-family: var(--dsp);
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.bmx-auth .sub {
+  font-size: 13.5px;
+  color: var(--mut);
+  margin-top: 7px;
+}
+
+.bmx-auth .sub b {
+  color: var(--ink-2);
+}
+
+.bmx-auth .card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 19px 20px;
+  margin-top: 19px;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
+}
+
+.bmx-auth .f {
+  margin-top: 15px;
+}
+
+.bmx-auth .f:first-child {
+  margin-top: 0;
+}
+
+.bmx-auth .f label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--mut-2);
+  margin-bottom: 6px;
+}
+
+.bmx-auth .f input {
+  width: 100%;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px 12px;
+}
+
+.bmx-auth .f input::placeholder {
+  color: var(--mut-2);
+}
+
+.bmx-auth .f input:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-bg);
+}
+
+.bmx-auth .f input.bad {
+  border-color: var(--red-line);
+  background: #fffcfc;
+}
+
+.bmx-auth .f input.bad:focus {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px var(--red-bg);
+}
+
+.bmx-auth .f .err {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--red);
+  margin-top: 6px;
+}
+
+.bmx-auth .f.iserr .err {
+  display: flex;
+}
+
+.bmx-auth .pw {
+  position: relative;
+}
+
+.bmx-auth .pw input {
+  padding-right: 62px;
+}
+
+.bmx-auth .pw .rev {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--mut);
+  cursor: pointer;
+  padding: 3px 5px;
+  border-radius: 5px;
+}
+
+.bmx-auth .pw .rev:hover {
+  color: var(--ink-2);
+  background: var(--soft);
+}
+
+.bmx-auth .btn {
+  width: 100%;
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 650;
+  border-radius: 9px;
+  padding: 11px 15px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.bmx-auth .btn:hover {
+  background: var(--soft);
+  border-color: #dadee5;
+}
+
+.bmx-auth .btn svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.bmx-auth .btn.pri {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+  margin-top: 18px;
+}
+
+.bmx-auth .btn.pri:hover {
+  background: #2459cf;
+}
+
+.bmx-auth .btn.pri:disabled {
+  opacity: 0.45;
+  cursor: default;
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+.bmx-auth .btn.ln:hover {
+  background: none;
+  color: #2459cf;
+}
+
+.bmx-auth .btn.gh {
+  margin-top: 10px;
+}
+
+.bmx-auth .btn.ln {
+  border: none;
+  background: none;
+  padding: 0;
+  width: auto;
+  font-size: 13px;
+  color: var(--blue);
+}
+
+.bmx-auth .otp {
+  position: relative;
+  display: flex;
+  gap: 8px;
+}
+
+.bmx-auth .otp-control {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0.02;
+  font-size: 16px;
+  letter-spacing: 2.4em;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  z-index: 1;
+}
+
+.bmx-auth .otp-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 48px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 600;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  pointer-events: none;
+}
+
+.bmx-auth .otp-box.on {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-bg);
+}
+
+.bmx-auth .otp-box.bad {
+  border-color: var(--red);
+}
+
+.bmx-auth input.otp-digit {
+  pointer-events: auto;
+  caret-color: var(--ink);
+  color: var(--ink);
+  padding: 0;
+  font-size: 20px;
+}
+
+.bmx-auth input.otp-digit:focus,
+.bmx-auth input.otp-digit:focus-visible {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-bg);
+}
+
+.bmx-auth .ok {
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--green);
+  margin-top: 8px;
+}
+
+.bmx-auth .foot-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.bmx-auth .btn.ln:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.bmx-auth .btn:focus-visible,
+.bmx-auth input:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.bmx-auth .or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 17px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mut-2);
+}
+
+.bmx-auth .or::before,
+.bmx-auth .or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.bmx-auth .alt {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 15px;
+}
+
+.bmx-auth .foot {
+  font-size: 13px;
+  color: var(--mut);
+  margin-top: 19px;
+  text-align: center;
+}
+
+.bmx-auth .legal {
+  font-size: 11.5px;
+  color: var(--mut-2);
+  margin-top: 22px;
+  text-align: center;
+}
+
+.bmx-auth .icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 15px;
+}
+
+.bmx-auth .icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.bmx-auth .icon.g {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.bmx-auth .icon.b {
+  background: var(--blue-bg);
+  color: var(--blue);
+}
+
+.bmx-auth .note {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  margin-top: 16px;
+}
+
+.bmx-auth .sso {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+@media (max-width: 900px) {
+  .bmx-auth .brandside {
+    display: none;
+  }
+
+  .bmx-auth .mobmark {
+    display: flex;
+  }
+}
+
+/* ===== Setup v3 light application chrome ===== */
+
+.bmx-setup {
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --dsp: var(--font-display), var(--font);
+  --mono: var(--font-mono), ui-monospace, "JetBrains Mono", monospace;
+  --ink: #141821;
+  --ink-2: #39404e;
+  --mut: #6b7280;
+  --mut-2: #9ca3af;
+  --line: #e8eaef;
+  --line-2: #f1f3f6;
+  --bg: #f7f8fa;
+  --soft: #fafbfc;
+  --blue: #2f6bf0;
+  --blue-bg: #edf3fe;
+  --blue-line: #c5dafb;
+  --green: #12a150;
+  --green-bg: #e8f6ee;
+  --green-line: #a5e0be;
+  --amber: #c2740b;
+  --amber-bg: #fdf3e3;
+  --amber-line: #f0d5a8;
+  --r: 10px;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.bmx-setup a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.bmx-setup a:hover {
+  color: #2459cf;
+}
+
+.bmx-setup .top {
+  height: 54px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+  flex: none;
+  gap: 16px;
+}
+
+.bmx-setup .brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.bmx-setup .brand svg {
+  width: 20px;
+  height: 20px;
+  color: var(--ink);
+  flex: none;
+}
+
+.bmx-setup .brand .wm {
+  font-family: var(--dsp);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+.bmx-setup .brand .who {
+  font-size: 12px;
+  color: var(--mut-2);
+  border-left: 1px solid var(--line);
+  padding-left: 10px;
+  margin-left: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bmx-setup .topR {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: none;
+}
+
+.bmx-setup .saved {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--mut-2);
+  white-space: nowrap;
+}
+
+.bmx-setup .saved svg {
+  width: 12px;
+  height: 12px;
+  color: var(--green);
+}
+
+.bmx-setup .scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.bmx-setup .wrap {
+  max-width: 660px;
+  margin: 0 auto;
+  padding: 26px 22px 90px;
+}
+
+.bmx-setup .btn {
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 9px;
+  padding: 10px 16px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: auto;
+}
+
+.bmx-setup .btn:hover {
+  background: var(--soft);
+  border-color: #dadee5;
+}
+
+.bmx-setup .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.bmx-setup .btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.bmx-setup .btn.pri {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+  margin-top: 0;
+}
+
+.bmx-setup .btn.pri:hover:not(:disabled) {
+  background: #2459cf;
+}
+
+.bmx-setup .btn.lg {
+  font-size: 14.5px;
+  padding: 13px 20px;
+  width: 100%;
+  justify-content: center;
+}
+
+.bmx-setup .btn.sm {
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
+.bmx-setup .btn.link {
+  border: none;
+  background: none;
+  color: var(--blue);
+  padding: 0;
+  font-size: 12.5px;
+}
+
+.bmx-setup .btn.link:hover {
+  background: none;
+  text-decoration: underline;
+}
+
+.bmx-setup .steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 22px;
+}
+
+.bmx-setup .st {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.bmx-setup .stb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  font-family: var(--font);
+  cursor: pointer;
+  padding: 0;
+  min-width: 0;
+  text-align: left;
+}
+
+.bmx-setup .stb:disabled {
+  cursor: default;
+}
+
+.bmx-setup .stn {
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--line);
+  color: var(--mut-2);
+  font-size: 11.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.bmx-setup .stb svg {
+  width: 11px;
+  height: 11px;
+}
+
+.bmx-setup .stl {
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--mut-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bmx-setup .st.done .stn {
+  background: var(--green-bg);
+  border-color: var(--green-line);
+  color: var(--green);
+}
+
+.bmx-setup .st.done .stl {
+  color: var(--ink-2);
+}
+
+.bmx-setup .st.on .stn {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.bmx-setup .st.on .stl {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.bmx-setup .stbar {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+  margin: 0 10px;
+  min-width: 12px;
+}
+
+.bmx-setup .st.done .stbar {
+  background: var(--green-line);
+}
+
+.bmx-setup .intro h1 {
+  font-family: var(--dsp);
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.032em;
+}
+
+.bmx-setup .intro p {
+  font-size: 14px;
+  color: var(--mut);
+  margin-top: 9px;
+  line-height: 1.6;
+}
+
+.bmx-setup .mins {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--blue);
+  background: var(--blue-bg);
+  border: 1px solid var(--blue-line);
+  padding: 5px 11px;
+  border-radius: 99px;
+  margin-top: 14px;
+}
+
+.bmx-setup .mins svg {
+  width: 13px;
+  height: 13px;
+}
+
+.bmx-setup .card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 20px;
+  margin-top: 20px;
+  box-shadow: none;
+}
+
+.bmx-setup .ct {
+  font-family: var(--dsp);
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.bmx-setup .cs {
+  font-size: 12.5px;
+  color: var(--mut);
+  margin-top: 4px;
+}
+
+.bmx-setup .sec {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-2);
+}
+
+.bmx-setup .sec:first-of-type {
+  margin-top: 16px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.bmx-setup .sq {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ink);
+  margin-bottom: 3px;
+}
+
+.bmx-setup .sh {
+  font-size: 12.5px;
+  color: var(--mut);
+  margin-bottom: 13px;
+}
+
+.bmx-setup .f {
+  margin-bottom: 14px;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.bmx-setup .f:last-child {
+  margin-bottom: 0;
+}
+
+.bmx-setup .f label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.bmx-setup .f label .rq {
+  color: var(--blue);
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+.bmx-setup .f label .op {
+  color: var(--mut-2);
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.bmx-setup .f input,
+.bmx-setup .f select {
+  width: 100%;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px 12px;
+}
+
+.bmx-setup .f input::placeholder {
+  color: var(--mut-2);
+}
+
+.bmx-setup .f input.mono {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.bmx-setup .f input:focus,
+.bmx-setup .f select:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-bg);
+}
+
+.bmx-setup .f .hint {
+  font-size: 11.5px;
+  color: var(--mut-2);
+  margin-top: 5px;
+}
+
+.bmx-setup .two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.bmx-setup .cb {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font);
+}
+
+.bmx-setup .cb:hover {
+  border-color: #cfd6e2;
+}
+
+.bmx-setup .cb.on {
+  border-color: var(--blue-line);
+  background: var(--blue-bg);
+}
+
+.bmx-setup .cbx {
+  width: 17px;
+  height: 17px;
+  border-radius: 5px;
+  border: 1.5px solid #cbd2dc;
+  background: #fff;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.bmx-setup .cb.on .cbx {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+.bmx-setup .cbx svg {
+  width: 11px;
+  height: 11px;
+  color: #fff;
+  opacity: 0;
+}
+
+.bmx-setup .cb.on .cbx svg {
+  opacity: 1;
+}
+
+.bmx-setup .cb .cbl {
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.bmx-setup .opts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bmx-setup .opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  background: #fff;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font);
+}
+
+.bmx-setup .opt:hover {
+  border-color: #cfd6e2;
+}
+
+.bmx-setup .opt.on {
+  border-color: var(--blue);
+  background: var(--blue-bg);
+  box-shadow: 0 0 0 2px var(--blue-bg);
+}
+
+.bmx-setup .rd {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1.5px solid #cbd2dc;
+  background: #fff;
+  flex: none;
+  margin-top: 1px;
+}
+
+.bmx-setup .opt.on .rd {
+  border-color: var(--blue);
+  border-width: 5px;
+}
+
+.bmx-setup .opt .ol {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.bmx-setup .opt .od {
+  display: block;
+  font-size: 12px;
+  color: var(--mut);
+  margin-top: 2px;
+  line-height: 1.45;
+}
+
+.bmx-setup .opt.dk {
+  border-style: dashed;
+}
+
+.bmx-setup .opt.dk.on {
+  border-style: solid;
+}
+
+.bmx-setup .rsr {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--green-bg);
+  border: 1px solid var(--green-line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: #0b6b34;
+  line-height: 1.55;
+}
+
+.bmx-setup .rsr svg,
+.bmx-setup .note svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  margin-top: 1px;
+}
+
+.bmx-setup .note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.bmx-setup .note b {
+  color: var(--ink);
+}
+
+.bmx-setup .owner {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 13px;
+}
+
+.bmx-setup .av {
+  width: 29px;
+  height: 29px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.bmx-setup .owner .on2 {
+  flex: 1;
+  min-width: 0;
+}
+
+.bmx-setup .owner .n2 {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bmx-setup .owner .e2 {
+  display: block;
+  font-size: 11.5px;
+  color: var(--mut);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bmx-setup .rv {
+  display: flex;
+  flex-direction: column;
+}
+
+.bmx-setup .rvr {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.bmx-setup .rvr:last-child {
+  border-bottom: none;
+}
+
+.bmx-setup .rk {
+  font-size: 12.5px;
+  color: var(--mut);
+  flex: none;
+}
+
+.bmx-setup .rvv {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: right;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.bmx-setup .rvv .un {
+  color: var(--mut-2);
+  font-weight: 500;
+}
+
+.bmx-setup .rgrp {
+  margin-top: 18px;
+}
+
+.bmx-setup .rgrp:first-child {
+  margin-top: 0;
+}
+
+.bmx-setup .rgh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+
+.bmx-setup .rgt {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--mut-2);
+}
+
+.bmx-setup .nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.bmx-setup .donecard {
+  max-width: 470px;
+  margin: 40px auto 0;
+  text-align: center;
+}
+
+.bmx-setup .donecard .dni {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: var(--green-bg);
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 18px;
+}
+
+.bmx-setup .dni svg {
+  width: 25px;
+  height: 25px;
+}
+
+.bmx-setup .donecard h1 {
+  font-family: var(--dsp);
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+.bmx-setup .donecard .dm {
+  font-size: 14.5px;
+  color: var(--ink-2);
+  margin-top: 11px;
+  line-height: 1.6;
+}
+
+.bmx-setup .donecard .dn {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: #0b6b34;
+  background: var(--green-bg);
+  border: 1px solid var(--green-line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 20px;
+}
+
+.bmx-setup .tsel {
+  position: relative;
+  width: 100%;
+}
+
+.bmx-setup .tsel .trig {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 11px;
+  font-family: var(--font);
+  font-size: 13.5px;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  min-height: 38px;
+}
+
+.bmx-setup .tsel .trig:hover {
+  border-color: #cfd6e2;
+}
+
+.bmx-setup .tsel.open .trig,
+.bmx-setup .tsel .trig:focus-visible {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-bg);
+}
+
+.bmx-setup .tsel .trig .val {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.bmx-setup .tsel .trig .val.ph {
+  color: var(--mut-2);
+  font-weight: 400;
+}
+
+.bmx-setup .tsel .trig .chev {
+  width: 14px;
+  height: 14px;
+  color: var(--mut-2);
+  flex: none;
+}
+
+.bmx-setup .tsel.open .trig .chev {
+  transform: rotate(180deg);
+}
+
+.bmx-setup .tsel .menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.15);
+  z-index: 60;
+  overflow: hidden;
+  min-width: 250px;
+}
+
+.bmx-setup .tsel.open .menu {
+  display: block;
+}
+
+.bmx-setup .tsel .msearch {
+  position: relative;
+  padding: 8px;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.bmx-setup .tsel .msearch svg {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 13px;
+  height: 13px;
+  color: var(--mut-2);
+}
+
+.bmx-setup .tsel .msearch input {
+  width: 100%;
+  font-family: var(--font);
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 10px 6px 29px;
+}
+
+.bmx-setup .tsel .mscroll {
+  max-height: 264px;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.bmx-setup .tsel .mi {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--ink-2);
+  background: none;
+  border: none;
+  text-align: left;
+  line-height: 1.35;
+}
+
+.bmx-setup .tsel .mi:hover,
+.bmx-setup .tsel .mi.cursor {
+  background: var(--soft);
+}
+
+.bmx-setup .tsel .mi.on {
+  background: var(--blue-bg);
+  color: var(--ink);
+}
+
+.bmx-setup .tsel .mi .tk {
+  width: 14px;
+  height: 14px;
+  color: var(--blue);
+  flex: none;
+  opacity: 0;
+}
+
+.bmx-setup .tsel .mi.on .tk {
+  opacity: 1;
+}
+
+.bmx-setup .tsel .mi .mt {
+  flex: 1;
+  min-width: 0;
+}
+
+.bmx-setup .tsel .mi .mt b {
+  display: block;
+  font-weight: 550;
+}
+
+.bmx-setup .tsel .mi .mt i {
+  font-style: normal;
+  display: block;
+  font-size: 11.5px;
+  color: var(--mut-2);
+  margin-top: 1px;
+}
+
+.bmx-setup .tsel .mempty {
+  padding: 20px 12px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--mut-2);
+}
+
+.bmx-setup .err {
+  font-size: 12px;
+  font-weight: 550;
+  color: #dc2626;
+  margin-top: 8px;
+}
+
+.bmx-setup .f.iserr input,
+.bmx-setup .f.iserr .trig {
+  border-color: #f8c6c6;
+  background: #fffcfc;
+}
+
+.bmx-setup .btn:focus-visible,
+.bmx-setup input:focus-visible,
+.bmx-setup .tsel .trig:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+@media (max-width: 620px) {
+  .bmx-setup .st:not(.on) .stl {
+    display: none;
+  }
+
+  .bmx-setup .stbar {
+    margin: 0 7px;
+  }
+}
+
+  @media (max-width: 390px) {
+  .bmx-auth .otp {
+    gap: 5px;
+  }
+
+  .bmx-auth .otp-box,
+  .bmx-auth input.otp-digit {
+    width: 36px;
+    height: 44px;
+  }
+
+  .bmx-auth .formside {
+    padding: 22px 16px 32px;
+  }
+}

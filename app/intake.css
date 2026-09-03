@@ -688,9 +688,232 @@
 }
 
 .plist {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+@media (max-width: 560px) {
+  .plist {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pfilter {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.pfilter svg {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: var(--mut-2);
+}
+
+.pfilter input {
+  width: 100%;
+  font-family: var(--font);
+  font-size: 13.5px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 12px 9px 33px;
+  background: #fff;
+}
+
+.pfilter input::placeholder {
+  color: var(--mut-2);
+}
+
+.pfilter input:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-bg);
+}
+
+.pg {
+  grid-column: 1 / -1;
   display: flex;
-  flex-direction: column;
-  gap: 7px;
+  align-items: center;
+  gap: 8px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--mut-2);
+  margin: 9px 0 1px;
+}
+
+.pg:first-child {
+  margin-top: 0;
+}
+
+.pg span {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--mut-2);
+  background: var(--line-2);
+  padding: 1px 6px;
+  border-radius: 99px;
+}
+
+.pg::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line-2);
+}
+
+.pnone {
+  grid-column: 1 / -1;
+  font-size: 12.5px;
+  color: var(--mut);
+  background: var(--amber-bg);
+  border: 1px solid var(--amber-line);
+  border-radius: 9px;
+  padding: 11px 13px;
+  text-wrap: pretty;
+}
+
+.pnone b {
+  color: #7a4a06;
+}
+
+.pr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  cursor: pointer;
+  transition: 0.11s;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font);
+  min-width: 0;
+}
+
+.pr:hover {
+  border-color: #cfd6e2;
+  background: var(--soft);
+}
+
+.pr:focus-visible {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-bg);
+}
+
+.pr.on {
+  border-color: var(--blue);
+  background: var(--blue-bg);
+  box-shadow: 0 0 0 2px var(--blue-bg);
+}
+
+.pr .rd2 {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid #cbd2dc;
+  background: #fff;
+  flex: none;
+  transition: 0.11s;
+}
+
+.pr.on .rd2 {
+  border-color: var(--blue);
+  border-width: 5px;
+}
+
+.pr .pn2 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pr .pv2 {
+  font-size: 11px;
+  color: var(--mut-2);
+  flex: none;
+}
+
+.pr.on .pv2 {
+  color: var(--blue);
+}
+
+.pr.esc {
+  grid-column: 1 / -1;
+  border-style: dashed;
+  margin-top: 9px;
+}
+
+.pr.esc.on {
+  border-style: solid;
+}
+
+.sqrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.ckd {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--green);
+  background: var(--green-bg);
+  border: 1px solid var(--green-line);
+  padding: 1px 8px;
+  border-radius: 99px;
+  flex: none;
+}
+
+.ckd svg {
+  width: 10px;
+  height: 10px;
+}
+
+.card.ok {
+  border-color: var(--green-line);
+  background: #fcfefd;
+}
+
+.card.ok .sq {
+  color: #0b6b34;
+}
+
+.card.ok .ckd {
+  display: inline-flex;
+}
+
+.card + .card {
+  margin-top: 12px;
+}
+
+.whatnext {
+  font-size: 12.5px;
+  color: var(--mut);
+  margin-top: 17px;
+  text-align: center;
+  text-wrap: pretty;
 }
 
 .prow {
@@ -1317,13 +1540,26 @@ table.log tbody tr.rowlink:hover td {
 }
 
 .note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   font-size: 12.5px;
-  color: var(--mut);
+  color: var(--ink-2);
   background: var(--soft);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: 10px;
+  padding: 12px 14px;
   margin-top: 14px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.note svg {
+  width: 15px;
+  height: 15px;
+  color: var(--mut-2);
+  flex: none;
+  margin-top: 1px;
 }
 
 @media (max-width: 880px) {
@@ -1463,702 +1699,10 @@ table.log tbody tr.rowlink:hover td {
   display: inline-block;
 }
 
-.bmx-auth {
-  --blue: #2f6bf0;
-  --blue-bg: #edf3fe;
-  --sb-act: #5b93ff;
-  display: flex;
-  min-height: 100vh;
-  background: var(--bg);
-  color: var(--ink);
-}
-
-.bmx-auth .brandside {
-  width: 44%;
-  max-width: 520px;
-  flex: none;
-  background: var(--sb);
-  color: #fff;
-  padding: 30px 38px 34px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.bmx-auth .bmark {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.bmx-auth .bmark svg {
-  width: 22px;
-  height: 22px;
-  color: #fff;
-  flex: none;
-}
-
-.bmx-auth .bmark .wm {
-  font-family: var(--dsp);
-  font-weight: 700;
-  font-size: 16px;
-  letter-spacing: -0.03em;
-  color: #fff;
-}
-
-.bmx-auth .bmark .pd {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--sb-act);
-  background: rgba(91, 147, 255, 0.14);
-  padding: 2px 7px;
-  border-radius: 99px;
-}
-
-.bmx-auth .bpitch h2 {
-  font-family: var(--dsp);
-  font-size: 27px;
-  font-weight: 700;
-  letter-spacing: -0.035em;
-  line-height: 1.2;
-}
-
-.bmx-auth .bpitch p {
-  font-size: 13.5px;
-  color: var(--sb-txt);
-  margin-top: 12px;
-  max-width: 390px;
-}
-
-.bmx-auth .bsteps {
-  display: flex;
-  flex-direction: column;
-  gap: 11px;
-  margin-top: 26px;
-}
-
-.bmx-auth .bs {
-  display: flex;
-  align-items: flex-start;
-  gap: 11px;
-}
-
-.bmx-auth .bs .bn {
-  width: 21px;
-  height: 21px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid var(--sb-line);
-  color: var(--sb-txt);
-  font-family: var(--mono);
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  margin-top: 1px;
-}
-
-.bmx-auth .bs.on .bn {
-  background: var(--sb-act);
-  border-color: var(--sb-act);
-  color: #0b1020;
-  font-weight: 700;
-}
-
-.bmx-auth .bs .bt {
-  font-size: 12.5px;
-  color: var(--sb-mut);
-  line-height: 1.45;
-}
-
-.bmx-auth .bs .bt b {
-  color: #fff;
-  font-weight: 600;
-  display: block;
-  font-size: 13px;
-}
-
-.bmx-auth .bfoot {
-  font-size: 11.5px;
-  color: var(--sb-mut);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-}
-
-.bmx-auth .formside {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 34px 26px 40px;
-}
-
-.bmx-auth .shell {
-  width: 100%;
-  max-width: 414px;
-}
-
-.bmx-auth .mobmark {
-  display: none;
-  align-items: center;
-  gap: 9px;
-  margin-bottom: 22px;
-}
-
-.bmx-auth .mobmark svg {
-  width: 20px;
-  height: 20px;
-}
-
-.bmx-auth .view.on {
-  display: flex;
-  flex-direction: column;
-}
-
-.bmx-auth h1 {
-  font-family: var(--dsp);
-  font-size: 23px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.bmx-auth .sub {
-  font-size: 13.5px;
-  color: var(--mut);
-  margin-top: 7px;
-}
-
-.bmx-auth .card {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  padding: 19px 20px;
-  margin-top: 19px;
-  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
-}
-
-.bmx-auth .f {
-  margin-top: 15px;
-}
-
-.bmx-auth .f:first-child {
-  margin-top: 0;
-}
-
-.bmx-auth .f label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 9px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--mut-2);
-  margin-bottom: 6px;
-}
-
-.bmx-auth .f input {
-  width: 100%;
-  font-family: var(--font);
-  font-size: 14px;
-  color: var(--ink);
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 10px 12px;
-}
-
-.bmx-auth .f input:focus {
-  outline: none;
-  border-color: var(--blue);
-  box-shadow: 0 0 0 3px var(--blue-bg);
-}
-
-.bmx-auth .f input.bad {
-  border-color: #f8c6c6;
-  background: #fffcfc;
-}
-
-.bmx-auth .f .hint {
-  font-size: 11.5px;
-  color: var(--mut-2);
-  margin-top: 6px;
-}
-
-.bmx-auth .f .err {
-  display: flex;
-  font-size: 12px;
-  font-weight: 550;
-  color: var(--red);
-  margin-top: 6px;
-}
-
-.bmx-auth .pw {
-  position: relative;
-}
-
-.bmx-auth .pw input {
-  padding-right: 62px;
-}
-
-.bmx-auth .pw .rev {
-  position: absolute;
-  right: 9px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  font-family: var(--font);
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--mut);
-  cursor: pointer;
-}
-
-.bmx-auth .btn {
-  width: 100%;
-  justify-content: center;
-}
-
-.bmx-auth .btn.pri {
-  margin-top: 18px;
-  background: var(--blue);
-  border-color: var(--blue);
-}
-
-.bmx-auth .btn.pri:hover {
-  background: #2459cf;
-}
-
-.bmx-auth .btn.ln {
-  width: auto;
-  border: none;
-  background: none;
-  padding: 0;
-  font-size: 13px;
-  color: var(--blue);
-}
-
-.bmx-auth .f label .btn.ln {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.bmx-auth .or {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 17px 0 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--mut-2);
-}
-
-.bmx-auth .or::before,
-.bmx-auth .or::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--line);
-}
-
-.bmx-auth .alt {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  margin-top: 15px;
-}
-
-.bmx-auth .foot {
-  font-size: 13px;
-  color: var(--mut);
-  margin-top: 19px;
-  text-align: center;
-}
-
-.bmx-auth .legal {
-  font-size: 11.5px;
-  color: var(--mut-2);
-  margin-top: 22px;
-  text-align: center;
-}
-
-.bmx-auth .cbx {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-family: var(--font);
-  font-size: 12.5px;
-  color: var(--ink-2);
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  padding: 0;
-  margin-top: 16px;
-  line-height: 1.5;
-  width: 100%;
-}
-
-.bmx-auth .cbx .bx {
-  width: 17px;
-  height: 17px;
-  border-radius: 5px;
-  border: 1.5px solid var(--line);
-  flex: none;
-  margin-top: 1px;
-  background: #fff;
-}
-
-.bmx-auth .cbx.on .bx {
-  background: var(--blue);
-  border-color: var(--blue);
-}
-
-.bmx-auth .icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  margin-bottom: 15px;
-}
-
-.bmx-auth .icon.g {
-  background: var(--green-bg);
-}
-
-.bmx-auth .icon.b {
-  background: var(--blue-bg);
-}
-
-.bmx-auth .icon.a {
-  background: var(--amber-bg);
-}
-
-.bmx-auth .stage {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  background: var(--blue-bg);
-  border: 1px solid var(--blue-line);
-  border-radius: 11px;
-  padding: 13px 15px;
-  margin-top: 17px;
-}
-
-.bmx-auth .stage .sn {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: var(--blue);
-  color: #fff;
-  font-family: var(--mono);
-  font-size: 11px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-}
-
-.bmx-auth .stage .sk {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--blue);
-}
-
-.bmx-auth .stage .sv {
-  font-family: var(--dsp);
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.015em;
-  color: var(--ink);
-  margin-top: 1px;
-}
-
-.bmx-auth .stage .sd {
-  font-size: 12.5px;
-  color: var(--ink-2);
-  margin-top: 3px;
-  line-height: 1.45;
-}
-
-.bmx-auth .mono {
-  font-family: var(--mono);
-  font-size: 12.5px;
-  background: #fff;
-  border: 1px solid var(--line);
-  padding: 1px 6px;
-  border-radius: 5px;
-}
-
-.site-home {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 40px 28px;
-  background: #fff;
-  color: var(--ink);
-}
-
-.site-home h1 {
-  font-family: var(--dsp);
-  font-size: 22px;
-  font-weight: 700;
-}
-
-.site-home p {
-  font-size: 14px;
-  color: var(--mut);
-  margin-top: 8px;
-  max-width: 420px;
-}
-
-@media (max-width: 1080px) {
-  .log-row {
-    grid-template-columns: minmax(180px, 1fr) minmax(140px, 1fr) minmax(110px, auto);
-  }
-
-  .log-row .c5 {
-    display: none;
-  }
-}
-
-.mprog {
-  display: none;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--mut);
-  margin-bottom: 14px;
-}
-
-@media (max-width: 900px) {
-  .bmx-auth .brandside {
-    display: none;
-  }
-
-  .bmx-auth .mobmark {
-    display: flex;
-  }
-
-  .mprog {
-    display: block;
-  }
-
-  .bmx-auth .navbar {
-    flex-direction: column;
-  }
-
-  .bmx-auth .navbar .btn.pri {
-    width: 100%;
-  }
-}
-
-.bmx-auth .shell-wide {
-  max-width: 520px;
-}
-
-.bpitch-note {
-  font-size: 13px;
-  color: var(--sb-txt);
-  margin-top: 10px;
-  max-width: 390px;
-}
-
-.bmx-auth .f select {
-  width: 100%;
-  font-family: var(--font);
-  font-size: 14px;
-  color: var(--ink);
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 10px 12px;
-}
-
-.bmx-auth .opt {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--mut-2);
-}
-
-.hint-copy {
-  font-size: 12.5px;
-  color: var(--mut);
-  margin: 4px 0 8px;
-}
-
-.subhead {
-  font-family: var(--dsp);
-  font-size: 16px;
-  font-weight: 650;
-  margin: 18px 0 4px;
-}
-
-.otp {
-  position: relative;
-  display: flex;
-  gap: 8px;
-}
-
-.otp-control {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  opacity: 0.02;
-  font-size: 16px;
-  letter-spacing: 2.4em;
-  background: transparent;
-  color: transparent;
-  caret-color: transparent;
-  z-index: 1;
-}
-
-.otp-box {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 48px;
-  text-align: center;
-  font-family: var(--mono);
-  font-size: 20px;
-  font-weight: 600;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  pointer-events: none;
-}
-
-.otp-box.on {
-  border-color: var(--blue);
-}
-
-.otp-box.bad {
-  border-color: var(--red);
-}
-
-.pms-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 240px;
-  overflow-y: auto;
-  margin-top: 12px;
-}
-
-.pms-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  width: 100%;
-  text-align: left;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 10px 12px;
-  cursor: pointer;
-  font-family: var(--font);
-}
-
-.pms-item b {
-  font-size: 13.5px;
-  color: var(--ink);
-}
-
-.pms-item i {
-  font-style: normal;
-  font-size: 11.5px;
-  color: var(--mut);
-}
-
-.pms-item.on {
-  border-color: var(--blue);
-  background: var(--blue-bg);
-}
-
-.choices {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-top: 8px;
-}
-
-.choice {
-  width: 100%;
-  text-align: left;
-  font-family: var(--font);
-  font-size: 13.5px;
-  font-weight: 550;
-  color: var(--ink-2);
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 10px 12px;
-  cursor: pointer;
-}
-
-.choice.on {
-  border-color: var(--blue);
-  background: var(--blue-bg);
-  color: var(--ink);
-}
-
-.bmx-auth fieldset {
-  border: 0;
-  padding: 0;
-  margin-top: 15px;
-}
-
-.bmx-auth legend {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--mut-2);
-}
-
-.bmx-auth .navbar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.bmx-auth .btn.gh {
-  width: 100%;
-}
-
-@media (max-width: 390px) {
-  .otp {
-    gap: 5px;
-  }
-
-  .otp-box {
-    width: 36px;
-    height: 44px;
-  }
-
-  .bmx-auth .formside {
-    padding: 22px 16px 32px;
+/* v3-2: collapse Property/People two-column rows on small screens.
+   More specific than `.bmx-setup .two` in bookmax-poc.css so it wins the cascade. */
+@media (max-width: 560px) {
+  .bmx-setup .card .two {
+    grid-template-columns: 1fr;
   }
 }
