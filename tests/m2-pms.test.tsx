@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useRouter } from "next/navigation";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -5,6 +7,16 @@ import { ConnectSetupScreen } from "@/components/setup/ConnectSetupScreen";
 import { PmsSetupScreen } from "@/components/setup/PmsSetupScreen";
 import { ReviewSetupScreen } from "@/components/setup/ReviewSetupScreen";
 import { ThanksSetupScreen } from "@/components/setup/ThanksSetupScreen";
+
+const { signOut } = vi.hoisted(() => ({
+  signOut: vi.fn(async () => ({ error: null })),
+}));
+
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: () => ({
+    auth: { signOut },
+  }),
+}));
 
 const context = {
   ok: true,
@@ -69,6 +81,7 @@ describe("M2 setup screens", () => {
   beforeEach(() => {
     push.mockReset();
     replace.mockReset();
+    signOut.mockClear();
     vi.mocked(useRouter).mockReturnValue({
       push,
       replace,
@@ -263,8 +276,74 @@ describe("M2 setup screens", () => {
     );
     render(<ThanksSetupScreen />);
     await screen.findByRole("heading", { name: "You're all set." });
-    expect(screen.getByText(/We've received the information for/)).toBeInTheDocument();
-    expect(screen.getByText("No further action is required right now.")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Thank you for completing the initial setup details for/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("The Gritti Palace").length).toBe(2);
+    expect(
+      screen.getByText(/moving into the execution phase of your/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Connection & Systems Testing")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /We'll validate the connection and integration configuration to ensure data is flowing correctly/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("PMS Access & Deployment")).toBeInTheDocument();
+    expect(
+      screen.getByText("No further action is required from you at this time."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Patrick Smith")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Exit" })).toBeInTheDocument();
+    const source = readFileSync(join(process.cwd(), "components/setup/ThanksSetupScreen.tsx"), "utf8");
+    expect(source).not.toContain("The Gritti Palace");
+    expect(source).not.toContain("Tom Hardy");
+    expect(source).not.toContain("your property");
+    expect(source).not.toContain("your PMS contact");
+  });
+
+  it("THANKS-UI-003 — technical contact and property names come from implementation data", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          ...context,
+          submission: { id: "sub-1" },
+          property: { ...context.property, name: "The Gritti Palace" },
+          intake: {
+            ...context.intake,
+            pmsId: "mews",
+            sameAsPrimaryContact: false,
+            technicalContactName: "Tom Hardy",
+          },
+        }),
+      ),
+    );
+    render(<ThanksSetupScreen />);
+    await screen.findByRole("heading", { name: "You're all set." });
+    expect(screen.getAllByText("The Gritti Palace").length).toBeGreaterThan(0);
+    expect(screen.getByText("Tom Hardy")).toBeInTheDocument();
+    expect(screen.queryByText("Patrick Smith")).not.toBeInTheDocument();
+  });
+
+  it("THANKS-UI-004 — Exit signs out through the existing client and returns to /access", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          ...context,
+          submission: { id: "sub-1" },
+          intake: { ...context.intake, pmsId: "mews", sameAsPrimaryContact: true },
+        }),
+      ),
+    );
+    render(<ThanksSetupScreen />);
+    await screen.findByRole("button", { name: "Exit" });
+    fireEvent.click(screen.getByRole("button", { name: "Exit" }));
+    await waitFor(() => {
+      expect(signOut).toHaveBeenCalledTimes(1);
+      expect(replace).toHaveBeenCalledWith("/access");
+    });
   });
 
   it("THANKS-UI-002 — missing submission does not render You're all set", async () => {

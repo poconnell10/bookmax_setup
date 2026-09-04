@@ -6,6 +6,7 @@ import { SetupShell } from "@/components/setup/SetupShell";
 import { fetchSetupContext } from "@/lib/setup/client";
 import { ownerName, type SetupIntakePayload } from "@/lib/setup/intake";
 import type { CustomerProperty } from "@/lib/implementation/customer/types";
+import { createClient } from "@/lib/supabase/client";
 
 export function ThanksSetupScreen() {
   const router = useRouter();
@@ -14,6 +15,7 @@ export function ThanksSetupScreen() {
   const [intake, setIntake] = useState<SetupIntakePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
+  const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +58,20 @@ export function ThanksSetupScreen() {
     );
   }
 
-  const contact = intake ? ownerName(intake, property) : "";
+  const propertyName = property?.name?.trim() || "";
+  const technicalContactName = intake ? ownerName(intake, property) : "";
+
+  async function onExit() {
+    if (exiting) {
+      return;
+    }
+    setExiting(true);
+    try {
+      await createClient().auth.signOut();
+    } finally {
+      router.replace("/access");
+    }
+  }
 
   return (
     <SetupShell email={email} property={property} intake={intake || undefined} submitted>
@@ -68,13 +83,38 @@ export function ThanksSetupScreen() {
         </div>
         <h1>You&apos;re all set.</h1>
         <p className="dm">
-          We&apos;ve received the information for <b>{property?.name || "your property"}</b>.
-          <br />
-          <br />
-          Our implementation team can now begin your BookMax setup. If we need anything else to
-          establish PMS access, we&apos;ll contact <b>{contact || "your PMS contact"}</b> directly.
+          Thank you for completing the initial setup details for <b>{propertyName}</b>.
         </p>
-        <div className="dn">No further action is required right now.</div>
+        <p className="dm">
+          Our engineering and integration teams are now moving into the execution phase of your{" "}
+          <b>BookMax</b> implementation.
+        </p>
+        <p className="dm">
+          <b>Connection &amp; Systems Testing</b>
+          <br />
+          We&apos;ll validate the connection and integration configuration to ensure data is flowing
+          correctly.
+        </p>
+        <p className="dm">
+          <b>PMS Access &amp; Deployment</b>
+          <br />
+          Our implementation engineering team will begin configuring and deploying BookMax for your
+          property.
+        </p>
+        <div className="dn">No further action is required from you at this time.</div>
+        <p className="dm">
+          If we require any additional PMS access or technical information, our team will contact{" "}
+          <b>{technicalContactName}</b> directly.
+        </p>
+        <p className="dm">
+          We appreciate your partnership and look forward to getting <b>{propertyName}</b> live on
+          BookMax.
+        </p>
+        <p className="dm">
+          <button type="button" className="btn" onClick={() => void onExit()} disabled={exiting}>
+            Exit
+          </button>
+        </p>
       </div>
     </SetupShell>
   );
