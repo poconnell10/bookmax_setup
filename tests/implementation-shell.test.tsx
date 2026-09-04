@@ -32,7 +32,7 @@ describe("implementation shell", () => {
   it("keeps internal submissions inside the application shell", () => {
     render(
       <IntakeProvider>
-        <AppShell>
+        <AppShell viewerKind="internal">
           <p>Shell content</p>
         </AppShell>
       </IntakeProvider>,

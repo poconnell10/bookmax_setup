@@ -11,9 +11,10 @@ function credentialLabel(status: SubmissionRecord["credentials_status"]) {
 export function SubmissionReview({ submission }: { submission: SubmissionRecord }) {
   const [record, setRecord] = useState(submission);
   const [error, setError] = useState<string | null>(null);
+  const canUpdateStatus = Boolean(record.can_update_status);
 
   async function onStatusChange(status: SubmissionStatus) {
-    if (status === record.status) {
+    if (status === record.status || !canUpdateStatus) {
       return;
     }
 
@@ -45,18 +46,22 @@ export function SubmissionReview({ submission }: { submission: SubmissionRecord 
         </div>
         <div className="ract" style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
           <label htmlFor="submission-status">Status</label>
-          <select
-            id="submission-status"
-            value={record.status}
-            aria-label="Status"
-            onChange={(event) => void onStatusChange(event.target.value as SubmissionStatus)}
-          >
-            {SUBMISSION_STATUSES.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          {canUpdateStatus ? (
+            <select
+              id="submission-status"
+              value={record.status}
+              aria-label="Status"
+              onChange={(event) => void onStatusChange(event.target.value as SubmissionStatus)}
+            >
+              {SUBMISSION_STATUSES.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span id="submission-status">{record.status}</span>
+          )}
           <Link href="/implementation/submissions" className="btn sm">
             Back to log
           </Link>
@@ -108,12 +113,23 @@ export function SubmissionReview({ submission }: { submission: SubmissionRecord 
               <Row key={key} label={key} value={value} />
             ))}
             <Row label="Credentials" value={credentialLabel(record.credentials_status)} />
+            {record.credentials_status === "received" ? (
+              <>
+                <Row label="Received at" value={record.credentials_received_at || "—"} />
+                <Row label="Credential type" value={record.credential_type || "—"} />
+              </>
+            ) : null}
           </div>
           <div className="secnote">
             <span>
-              <b>Credential values are not held here and cannot be revealed.</b> This log records only
-              whether they have been received.
+              <b>Credential values are not held in this log.</b> This view records only whether they
+              have been received.
             </span>
+            {record.can_open_credentials ? (
+              <Link href={`/implementation/submissions/${record.submission_id}/credentials`} className="btn sm">
+                Open secure credentials
+              </Link>
+            ) : null}
           </div>
         </div>
       </div>

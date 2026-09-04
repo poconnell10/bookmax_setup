@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { getInternalViewerKind } from "@/lib/implementation/internal/auth";
 
-export default function ImplementationWorkspaceLayout({
+export default async function ImplementationWorkspaceLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  return <AppShell>{children}</AppShell>;
+  const viewerKind = await getInternalViewerKind();
+  return <AppShell viewerKind={viewerKind}>{children}</AppShell>;
 }

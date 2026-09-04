@@ -102,6 +102,10 @@ export type SubmissionRecord = {
   connection_details: Record<string, string>;
   connection_details_status: ConnectionDetailsStatus;
   credentials_status: CredentialStatus;
+  credentials_received_at?: string | null;
+  credential_type?: CredentialLabel | null;
+  can_open_credentials?: boolean;
+  can_update_status?: boolean;
   submitted_at: string;
   submitted_by: string;
   status: SubmissionStatus;

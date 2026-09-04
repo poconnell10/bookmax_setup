@@ -23,6 +23,8 @@ const SETUP_PREFIXES = [
   "/setup/complete",
 ] as const;
 
+const INTERNAL_PREFIXES = ["/implementation/submissions", "/admin/submissions"] as const;
+
 function matchesPrefix(pathname: string, prefixes: readonly string[]): boolean {
   return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
@@ -31,8 +33,9 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isSetup = matchesPrefix(pathname, SETUP_PREFIXES);
   const isInvitation = matchesPrefix(pathname, INVITATION_PREFIXES);
+  const isInternal = matchesPrefix(pathname, INTERNAL_PREFIXES);
 
-  if (!isSetup && !isInvitation) {
+  if (!isSetup && !isInvitation && !isInternal) {
     return NextResponse.next();
   }
 
@@ -48,7 +51,7 @@ export async function proxy(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (isSetup) {
+    if (isSetup || isInternal) {
       if (!user?.id) {
         return NextResponse.redirect(new URL("/access", request.url));
       }
@@ -71,7 +74,7 @@ export async function proxy(request: NextRequest) {
 
     return response;
   } catch {
-    const login = new URL(isSetup ? "/access" : "/implementation", request.url);
+    const login = new URL(isSetup || isInternal ? "/access" : "/implementation", request.url);
     return NextResponse.redirect(login);
   }
 }
@@ -89,5 +92,9 @@ export const config = {
     "/setup/review",
     "/setup/thanks",
     "/setup/complete",
+    "/implementation/submissions",
+    "/implementation/submissions/:path*",
+    "/admin/submissions",
+    "/admin/submissions/:path*",
   ],
 };

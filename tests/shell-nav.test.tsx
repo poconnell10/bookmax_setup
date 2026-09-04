@@ -7,7 +7,7 @@ import { customerNavLabels, internalNavLabels } from "@/lib/navigation";
 
 describe("BookMax sidebar", () => {
   it("shows BookMax navigation without Traqra items or website account links", () => {
-    render(<Sidebar />);
+    render(<Sidebar viewerKind="internal" />);
 
     expect(screen.getByRole("navigation", { name: "BookMax" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Setup" })).toHaveAttribute(
@@ -32,6 +32,12 @@ describe("BookMax sidebar", () => {
   it("keeps customer and internal navigation distinct", () => {
     expect(customerNavLabels).toEqual(["Setup"]);
     expect(internalNavLabels).toEqual(["Setup", "Submissions"]);
+  });
+
+  it("hides the internal submissions link from customers", () => {
+    render(<Sidebar viewerKind="customer" />);
+    expect(screen.getByRole("link", { name: "Setup" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Submissions" })).not.toBeInTheDocument();
   });
 });
 

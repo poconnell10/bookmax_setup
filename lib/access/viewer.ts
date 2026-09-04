@@ -1,8 +1,5 @@
 export type ViewerKind = "customer" | "internal";
 
-/** Prototype default. Replace with Supabase Auth / roles. */
-export const PROTOTYPE_VIEWER_KIND: ViewerKind = "internal";
-
-export function canSeeInternalNav(kind: ViewerKind = PROTOTYPE_VIEWER_KIND): boolean {
+export function canSeeInternalNav(kind: ViewerKind): boolean {
   return kind === "internal";
 }

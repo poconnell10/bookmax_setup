@@ -1,43 +1,40 @@
-import { NextResponse } from "next/server";
-import {
-  getPrototypeSubmission,
-  updatePrototypeSubmissionStatus,
-} from "@/lib/implementation/persistence";
+import { NextRequest, NextResponse } from "next/server";
+import { requireInternalStaff } from "@/lib/implementation/internal/auth";
+import { internalErrorToResponse } from "@/lib/implementation/internal/http";
+import { getInternalSubmissionService } from "@/lib/implementation/internal/runtime";
 import { SUBMISSION_STATUSES, type SubmissionStatus } from "@/types/implementation";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await context.params;
-  const submission = getPrototypeSubmission(id);
-
-  if (!submission) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  try {
+    const staff = await requireInternalStaff(request);
+    const { id } = await context.params;
+    const submission = await getInternalSubmissionService().get(staff, id);
+    return staff.attachAuthCookies(NextResponse.json({ ok: true, submission }));
+  } catch (error) {
+    return internalErrorToResponse(error);
   }
-
-  return NextResponse.json({ submission });
 }
 
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await context.params;
-  const body = (await request.json()) as { status?: string };
-  const status = body.status as SubmissionStatus | undefined;
-
-  if (!status || !SUBMISSION_STATUSES.includes(status)) {
-    return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+  try {
+    const staff = await requireInternalStaff(request);
+    const { id } = await context.params;
+    const body = (await request.json().catch(() => ({}))) as { status?: string };
+    const status = body.status as SubmissionStatus | undefined;
+    if (!status || !SUBMISSION_STATUSES.includes(status)) {
+      return NextResponse.json({ ok: false, code: "invalid_input", error: "Invalid status" }, { status: 400 });
+    }
+    const submission = await getInternalSubmissionService().updateStatus(staff, id, status);
+    return staff.attachAuthCookies(NextResponse.json({ ok: true, submission }));
+  } catch (error) {
+    return internalErrorToResponse(error);
   }
-
-  const submission = updatePrototypeSubmissionStatus(id, status);
-
-  if (!submission) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  return NextResponse.json({ submission });
 }

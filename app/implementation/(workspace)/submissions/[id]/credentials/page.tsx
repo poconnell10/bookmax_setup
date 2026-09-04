@@ -1,22 +1,22 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { SubmissionReview } from "@/components/submissions/SubmissionReview";
-import { requireInternalStaffPage } from "@/lib/implementation/internal/auth";
+import { SecureCredentialsPanel } from "@/components/submissions/SecureCredentialsPanel";
+import { requireEngineerPage } from "@/lib/implementation/internal/auth";
 import { getInternalSubmissionService } from "@/lib/implementation/internal/runtime";
 import { InternalError } from "@/lib/implementation/internal/types";
 
 export const metadata: Metadata = {
-  title: "Submission review",
+  title: "Secure credentials",
 };
 
 export const dynamic = "force-dynamic";
 
-export default async function ImplementationSubmissionDetailPage({
+export default async function SecureCredentialsPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const staff = await requireInternalStaffPage();
+  const staff = await requireEngineerPage();
   const { id } = await params;
   let submission;
 
@@ -29,5 +29,16 @@ export default async function ImplementationSubmissionDetailPage({
     throw error;
   }
 
-  return <SubmissionReview submission={submission} />;
+  if (!submission.can_open_credentials) {
+    notFound();
+  }
+
+  return (
+    <SecureCredentialsPanel
+      submissionId={submission.submission_id}
+      organisation={submission.organisation}
+      credentialType={submission.credential_type}
+      receivedAt={submission.credentials_received_at}
+    />
+  );
 }

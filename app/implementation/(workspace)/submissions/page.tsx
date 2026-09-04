@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { SubmissionsList } from "@/components/submissions/SubmissionsList";
-import { listPrototypeSubmissions } from "@/lib/implementation/persistence";
+import { requireInternalStaffPage } from "@/lib/implementation/internal/auth";
+import { getInternalSubmissionService } from "@/lib/implementation/internal/runtime";
 
 export const metadata: Metadata = {
   title: "Submissions",
@@ -8,7 +9,8 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default function ImplementationSubmissionsPage() {
-  const submissions = listPrototypeSubmissions();
+export default async function ImplementationSubmissionsPage() {
+  const staff = await requireInternalStaffPage();
+  const submissions = await getInternalSubmissionService().list(staff);
   return <SubmissionsList submissions={submissions} />;
 }

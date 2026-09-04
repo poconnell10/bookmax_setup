@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { canSeeInternalNav } from "@/lib/access/viewer";
+import { canSeeInternalNav, type ViewerKind } from "@/lib/access/viewer";
 import { itemIsActive, NAV_SECTIONS } from "@/lib/navigation";
 
 const ICONS: Record<string, ReactNode> = {
@@ -41,9 +41,9 @@ const ICONS: Record<string, ReactNode> = {
   ),
 };
 
-export function Sidebar() {
+export function Sidebar({ viewerKind = "customer" }: { viewerKind?: ViewerKind }) {
   const pathname = usePathname();
-  const showInternal = canSeeInternalNav();
+  const showInternal = canSeeInternalNav(viewerKind);
 
   return (
     <aside className="sb">
