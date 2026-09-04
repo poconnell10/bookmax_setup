@@ -101,10 +101,24 @@ describe("M1 email entry", () => {
     vi.unstubAllGlobals();
   });
 
+  it("shows access copy and support link without privacy or security", () => {
+    render(<EmailAccessScreen />);
+    expect(screen.getByText(/Enter your email address to get started/)).toBeInTheDocument();
+    expect(screen.getByLabelText("EMAIL ADDRESS")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^work email$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Enter your work email address/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Privacy" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Security" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Support" })).toHaveAttribute(
+      "href",
+      "https://fpg-ingauge.atlassian.net/servicedesk/customer/portals",
+    );
+  });
+
   it("AUTH-001 — valid email requests OTP and opens the verification screen", async () => {
     render(<EmailAccessScreen />);
     expect(screen.getByRole("heading", { name: "Start your BookMax implementation" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/work email/i), { target: { value: "jane@hotel.com" } });
+    fireEvent.change(screen.getByLabelText("EMAIL ADDRESS"), { target: { value: "jane@hotel.com" } });
     fireEvent.click(screen.getByRole("button", { name: "Send verification code" }));
     await waitFor(() => {
       expect(push).toHaveBeenCalledWith("/access/verify");
@@ -120,7 +134,7 @@ describe("M1 email entry", () => {
 
   it("AUTH-002 — invalid email is blocked without a Supabase call", () => {
     render(<EmailAccessScreen />);
-    fireEvent.change(screen.getByLabelText(/work email/i), { target: { value: "john@" } });
+    fireEvent.change(screen.getByLabelText("EMAIL ADDRESS"), { target: { value: "john@" } });
     fireEvent.click(screen.getByRole("button", { name: "Send verification code" }));
     expect(screen.getByText(EMAIL_VALIDATION_ERROR)).toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();

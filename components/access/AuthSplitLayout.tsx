@@ -37,9 +37,7 @@ export function AuthSplitLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <div className="bfoot">
-          <a href="#privacy">Privacy</a>
-          <a href="#security">Security</a>
-          <a href="#contact">Contact implementation</a>
+          <a href="https://fpg-ingauge.atlassian.net/servicedesk/customer/portals">Support</a>
         </div>
       </aside>
       <main className="formside">

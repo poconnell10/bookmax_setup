@@ -56,7 +56,7 @@ export function EmailAccessScreen() {
     <AuthSplitLayout>
       <h1>Start your BookMax implementation</h1>
       <p className="sub">
-        Enter your work email address to get started. We&apos;ll send you a verification code.
+        Enter your email address to get started. We&apos;ll send you a verification code.
       </p>
       {resumeHint ? (
         <p className="note" role="status">
@@ -65,7 +65,7 @@ export function EmailAccessScreen() {
       ) : null}
       <form className="card" onSubmit={onSubmit} noValidate>
         <div className={`f${error ? " iserr" : ""}`}>
-          <label htmlFor="work-email">Work email</label>
+          <label htmlFor="work-email">EMAIL ADDRESS</label>
           <input
             ref={inputRef}
             id="work-email"
