@@ -1,6 +1,18 @@
 -- Internal submission queue: staff authorization, workflow status, and audit.
 -- Local migration only. Do not apply to remote without explicit approval.
 -- Additive only. No credential values. No destructive changes.
+--
+-- Engineer provisioning (OTP is authentication, not authorization):
+-- 1. Approved engineer signs in once using the existing OTP flow.
+-- 2. Supabase Auth establishes auth.users.id.
+-- 3. Administrator inserts that UUID:
+--      insert into public.internal_staff (user_id, role)
+--      values ('<auth.users.id>', 'engineer');
+-- 4. Engineer authenticates normally through OTP.
+-- 5. Server requires a valid session AND matching internal_staff.user_id.
+-- 6. role = viewer | engineer determines authorization.
+-- Removing or downgrading the row takes effect on the next protected server request.
+-- Email domain alone must never grant access.
 
 -- ---------------------------------------------------------------------------
 -- internal_staff

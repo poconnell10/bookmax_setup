@@ -42,7 +42,7 @@ export function SecureCredentialsPanel({
         cache: "no-store",
       });
       if (!response.ok) {
-        setError("Secure credentials could not be opened.");
+        setError("Credentials could not be revealed.");
         return;
       }
       const payload = (await response.json()) as Revealed;
@@ -62,7 +62,7 @@ export function SecureCredentialsPanel({
     <div className="step">
       <div className="rhead">
         <div style={{ minWidth: 0 }}>
-          <h2>Secure credentials</h2>
+          <h2>Credentials received</h2>
           <div style={{ fontSize: 13, color: "var(--mut)", marginTop: 3 }}>{organisation}</div>
           <span className="id">{submissionId}</span>
         </div>
@@ -98,8 +98,9 @@ export function SecureCredentialsPanel({
           </div>
           <div className="secnote">
             <span>
-              Opening credentials requires an authorized implementation engineer and creates an audit
-              record. Values are not stored in the Submission Log.
+              These credentials are restricted to authorized implementation engineers. Revealing them
+              decrypts the stored envelope on the server and creates an audit record. Values are not
+              stored in the Submission Log.
             </span>
           </div>
           {error ? (
@@ -108,24 +109,31 @@ export function SecureCredentialsPanel({
             </div>
           ) : null}
           {revealed ? (
-            <div className="sgrid" style={{ marginTop: 16 }}>
-              <div className="srow">
-                <span className="sk2">Client ID</span>
-                <span className="sv2">{revealed.clientId}</span>
+            <>
+              <div className="sgrid" style={{ marginTop: 16 }}>
+                <div className="srow">
+                  <span className="sk2">Client ID</span>
+                  <span className="sv2">{revealed.clientId}</span>
+                </div>
+                <div className="srow">
+                  <span className="sk2">Client secret</span>
+                  <span className="sv2">{revealed.clientSecret}</span>
+                </div>
+                <div className="srow">
+                  <span className="sk2">Application key</span>
+                  <span className="sv2">{revealed.applicationKey || "—"}</span>
+                </div>
               </div>
-              <div className="srow">
-                <span className="sk2">Client secret</span>
-                <span className="sv2">{revealed.clientSecret}</span>
+              <div style={{ marginTop: 16 }}>
+                <button type="button" className="btn sm" onClick={() => setRevealed(null)}>
+                  Hide credentials
+                </button>
               </div>
-              <div className="srow">
-                <span className="sk2">Application key</span>
-                <span className="sv2">{revealed.applicationKey || "—"}</span>
-              </div>
-            </div>
+            </>
           ) : (
             <div style={{ marginTop: 16 }}>
               <button type="button" className="btn pri" disabled={busy} onClick={() => void onReveal()}>
-                {busy ? "Opening…" : "Open secure credentials"}
+                {busy ? "Revealing…" : "Reveal credentials"}
               </button>
             </div>
           )}

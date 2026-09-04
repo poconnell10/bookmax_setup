@@ -5,6 +5,21 @@ import { getStaffStore } from "@/lib/implementation/internal/runtime";
 import { InternalError, type InternalStaff } from "@/lib/implementation/internal/types";
 import type { ViewerKind } from "@/lib/access/viewer";
 
+/**
+ * Internal authorization is an explicit allow-list, not OTP and not email domain.
+ *
+ * Provision an engineer:
+ * 1. The person signs in once through the existing OTP flow.
+ * 2. Supabase Auth establishes auth.users.id.
+ * 3. An administrator inserts that UUID into public.internal_staff (role = viewer | engineer).
+ * 4. They authenticate again through OTP.
+ * 5. The server requires a valid session AND a matching internal_staff.user_id.
+ * 6. role determines queue, status, and credential-reveal permissions.
+ *
+ * Deprovision by deleting or changing that row. The next protected server request is denied
+ * or downgraded immediately; authorization is never stored in the browser session.
+ */
+
 export type InternalSession = InternalStaff & {
   email: string;
   attachAuthCookies: (response: import("next/server").NextResponse) => import("next/server").NextResponse;
@@ -18,7 +33,7 @@ export async function requireInternalStaff(request: NextRequest): Promise<Intern
   } = await supabase.auth.getUser();
 
   if (error || !user?.id) {
-    throw new InternalError("forbidden", "Sign in to continue.");
+    throw new InternalError("unauthenticated", "Sign in to continue.");
   }
 
   const staff = await getStaffStore().findByUserId(user.id);

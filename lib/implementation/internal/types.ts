@@ -38,11 +38,19 @@ export type CredentialReceipt = {
   receivedAt: string;
 };
 
+export type InternalAuditView = {
+  eventType: InternalAuditEventType;
+  actorUserId: string;
+  createdAt: string;
+  metadata: Record<string, string | number | boolean | null>;
+};
+
 export type InternalSubmissionView = SubmissionRecord & {
   credentials_received_at: string | null;
   credential_type: CredentialLabel | null;
   can_open_credentials: boolean;
   can_update_status: boolean;
+  audit_events: InternalAuditView[];
 };
 
 export type RevealedCredentials = {
@@ -56,10 +64,10 @@ export type RevealedCredentials = {
 };
 
 export class InternalError extends Error {
-  readonly code: "forbidden" | "not_found" | "invalid_input" | "unavailable";
+  readonly code: "unauthenticated" | "forbidden" | "not_found" | "invalid_input" | "unavailable";
 
   constructor(
-    code: "forbidden" | "not_found" | "invalid_input" | "unavailable",
+    code: "unauthenticated" | "forbidden" | "not_found" | "invalid_input" | "unavailable",
     message: string,
   ) {
     super(message);

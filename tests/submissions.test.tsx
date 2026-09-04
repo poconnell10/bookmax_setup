@@ -47,7 +47,7 @@ describe("submissions log", () => {
     expect(screen.getAllByText("Hotel ABC Group").length).toBeGreaterThan(0);
     expect(screen.getByText("ABCHT")).toBeInTheDocument();
     expect(screen.queryByText(/client secret/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Open secure credentials" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Reveal credentials" })).not.toBeInTheDocument();
   });
 
   it("offers the secure credential path only when authorized", () => {
@@ -66,7 +66,7 @@ describe("submissions log", () => {
     expect(screen.getByText("Received")).toBeInTheDocument();
     expect(screen.getByText("Received at")).toBeInTheDocument();
     expect(screen.getByText("API Credentials")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open secure credentials" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Reveal credentials" })).toHaveAttribute(
       "href",
       "/implementation/submissions/BMX-TEST-1/credentials",
     );
@@ -107,10 +107,10 @@ describe("secure credential reveal controls", () => {
     );
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Open secure credentials" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reveal credentials" })).toBeInTheDocument();
     expect(screen.queryByText(secret)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open secure credentials" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal credentials" }));
     await waitFor(() => {
       expect(screen.getByText(secret)).toBeInTheDocument();
     });
@@ -122,6 +122,14 @@ describe("secure credential reveal controls", () => {
     expect(window.localStorage.length).toBe(0);
     expect(window.sessionStorage.length).toBe(0);
 
+    fireEvent.click(screen.getByRole("button", { name: "Hide credentials" }));
+    expect(screen.queryByText(secret)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reveal credentials" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reveal credentials" }));
+    await waitFor(() => {
+      expect(screen.getByText(secret)).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole("link", { name: "Back to submission" }));
     expect(screen.queryByText(secret)).not.toBeInTheDocument();
     unmount();

@@ -5,7 +5,14 @@ import { SUBMISSION_STATUSES, type SubmissionStatus } from "@/types/implementati
 import type { InternalAuditStore } from "@/lib/implementation/internal/audit-store";
 import { toInternalSubmissionView, credentialTypeForIntake } from "@/lib/implementation/internal/map-record";
 import type { InternalQueueStore } from "@/lib/implementation/internal/queue-store";
-import { InternalError, type InternalStaff, type InternalSubmissionView, type RevealedCredentials } from "@/lib/implementation/internal/types";
+import {
+  InternalError,
+  type InternalStaff,
+  type InternalSubmissionView,
+  type RevealedCredentials,
+} from "@/lib/implementation/internal/types";
+
+type StaffActor = InternalStaff & { email?: string };
 
 export function createInternalSubmissionService(deps: {
   queue: InternalQueueStore;
@@ -17,7 +24,7 @@ export function createInternalSubmissionService(deps: {
     return new Map(receipts.map((row) => [row.implementationId, row]));
   }
 
-  async function list(staff: InternalStaff): Promise<InternalSubmissionView[]> {
+  async function list(staff: StaffActor): Promise<InternalSubmissionView[]> {
     const rows = await deps.queue.list();
     const receipts = await receiptsByImplementation(rows);
     return rows.map((row) =>
@@ -25,17 +32,18 @@ export function createInternalSubmissionService(deps: {
     );
   }
 
-  async function get(staff: InternalStaff, id: string): Promise<InternalSubmissionView> {
+  async function get(staff: StaffActor, id: string): Promise<InternalSubmissionView> {
     const row = await deps.queue.getById(id);
     if (!row) {
       throw new InternalError("not_found", "Submission was not found.");
     }
     const receipts = await receiptsByImplementation([row]);
-    return toInternalSubmissionView(row, receipts.get(row.implementationId) ?? null, staff.role);
+    const events = await deps.audit.listBySubmissionId(row.id);
+    return toInternalSubmissionView(row, receipts.get(row.implementationId) ?? null, staff.role, events);
   }
 
   async function updateStatus(
-    staff: InternalStaff,
+    staff: StaffActor,
     id: string,
     status: SubmissionStatus,
   ): Promise<InternalSubmissionView> {
@@ -56,8 +64,9 @@ export function createInternalSubmissionService(deps: {
       implementationId: updated.implementationId,
       submissionId: updated.id,
       metadata: {
-        from: current.workflowStatus,
-        to: status,
+        previous_status: current.workflowStatus,
+        new_status: status,
+        changed_by_email: staff.email || null,
       },
     });
     logAccess("internal_status_changed", {
@@ -69,9 +78,9 @@ export function createInternalSubmissionService(deps: {
     return get(staff, id);
   }
 
-  async function revealCredentials(staff: InternalStaff, id: string): Promise<RevealedCredentials> {
+  async function revealCredentials(staff: StaffActor, id: string): Promise<RevealedCredentials> {
     if (staff.role !== "engineer") {
-      throw new InternalError("forbidden", "You cannot open secure credentials.");
+      throw new InternalError("forbidden", "You cannot reveal credentials.");
     }
     const row = await deps.queue.getById(id);
     if (!row) {
@@ -89,6 +98,8 @@ export function createInternalSubmissionService(deps: {
       implementationId: row.implementationId,
       submissionId: row.id,
       metadata: {
+        action: "credential_opened",
+        accessed_by_email: staff.email || null,
         credentialType,
         receivedAt: stored.receivedAt,
       },

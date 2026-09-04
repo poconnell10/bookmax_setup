@@ -127,10 +127,10 @@ describe("internal submissions authorization", () => {
     const { POST: reveal } = await import("@/app/api/implementation/submissions/[id]/credentials/route");
     const params = Promise.resolve({ id: "missing" });
 
-    expect((await listGet(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(403);
+    expect((await listGet(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(401);
     expect(
       (await detailGet(new NextRequest("http://localhost:3000/api/implementation/submissions/missing"), { params })).status,
-    ).toBe(403);
+    ).toBe(401);
     expect(
       (
         await PATCH(
@@ -141,35 +141,87 @@ describe("internal submissions authorization", () => {
           { params },
         )
       ).status,
-    ).toBe(403);
+    ).toBe(401);
     expect(
       (
         await reveal(new NextRequest("http://localhost:3000/api/implementation/submissions/missing/credentials", {
           method: "POST",
         }), { params })
       ).status,
-    ).toBe(403);
+    ).toBe(401);
   });
 
   it("lets a customer use setup but not the internal queue or credential references", async () => {
     asUser("user-1", "priya@northgatehotels.com");
+    const seeded = await seedQueue();
+    asUser("user-1", "priya@northgatehotels.com");
     const { GET: listGet } = await import("@/app/api/implementation/submissions/route");
+    const { PATCH } = await import("@/app/api/implementation/submissions/[id]/route");
+    const { POST: reveal } = await import("@/app/api/implementation/submissions/[id]/credentials/route");
     const { GET: setupContext } = await import("@/app/api/setup/context/route");
     const { GET: credStatus } = await import("@/app/api/setup/credentials/status/route");
+    const params = Promise.resolve({ id: seeded.row.id });
     const listed = await listGet(new NextRequest("http://localhost:3000/api/implementation/submissions"));
+    const patched = await PATCH(
+      new NextRequest(`http://localhost:3000/api/implementation/submissions/${seeded.row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "Under Review" }),
+      }),
+      { params },
+    );
+    const opened = await reveal(
+      new NextRequest(`http://localhost:3000/api/implementation/submissions/${seeded.row.id}/credentials`, {
+        method: "POST",
+      }),
+      { params },
+    );
     const context = await setupContext(new NextRequest("http://localhost:3000/api/setup/context"));
     const status = await credStatus(new NextRequest("http://localhost:3000/api/setup/credentials/status"));
     const listBody = await listed.json();
+    const openedBody = await opened.json();
     const statusBody = await status.json();
 
     expect(listed.status).toBe(403);
+    expect(patched.status).toBe(403);
+    expect(opened.status).toBe(403);
     expect(JSON.stringify(listBody)).not.toContain(SECRET);
+    expect(JSON.stringify(openedBody)).not.toContain(SECRET);
+    expect(JSON.stringify(openedBody)).not.toContain("envelope");
     expect(context.status).toBe(200);
     expect(status.status).toBe(200);
     expect(statusBody.credentialsReceived).toBe(true);
     expect(statusBody).not.toHaveProperty("clientSecret");
     expect(statusBody).not.toHaveProperty("envelope");
     expect(JSON.stringify(statusBody)).not.toContain(SECRET);
+  });
+
+  it("does not grant internal access from a company email without internal_staff", async () => {
+    const seeded = await seedQueue();
+    asUser("fpg-1", "alex@frontlinepg.com");
+    const { GET: listGet } = await import("@/app/api/implementation/submissions/route");
+    const { PATCH } = await import("@/app/api/implementation/submissions/[id]/route");
+    const { POST: reveal } = await import("@/app/api/implementation/submissions/[id]/credentials/route");
+    const params = Promise.resolve({ id: seeded.row.id });
+    const listed = await listGet(new NextRequest("http://localhost:3000/api/implementation/submissions"));
+    const patched = await PATCH(
+      new NextRequest(`http://localhost:3000/api/implementation/submissions/${seeded.row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "Under Review" }),
+      }),
+      { params },
+    );
+    const opened = await reveal(
+      new NextRequest(`http://localhost:3000/api/implementation/submissions/${seeded.row.id}/credentials`, {
+        method: "POST",
+      }),
+      { params },
+    );
+
+    expect(listed.status).toBe(403);
+    expect(patched.status).toBe(403);
+    expect(opened.status).toBe(403);
+    expect(JSON.stringify(await opened.json())).not.toContain(SECRET);
+    expect(JSON.stringify(await listed.json())).not.toContain(SECRET);
   });
 
   it("shows a submitted implementation in the internal queue without secrets", async () => {
@@ -247,7 +299,11 @@ describe("internal submissions authorization", () => {
 
     const events = await seeded.audit.listBySubmissionId(seeded.row.id);
     expect(events[0]?.eventType).toBe("status_changed");
-    expect(events[0]?.metadata).toEqual({ from: "Submitted", to: "Under Review" });
+    expect(events[0]?.metadata).toEqual({
+      previous_status: "Submitted",
+      new_status: "Under Review",
+      changed_by_email: "engineer@bookmax.ai",
+    });
     expect(JSON.stringify(events)).not.toContain(SECRET);
 
     const reread = await GET(
@@ -299,10 +355,68 @@ describe("internal submissions authorization", () => {
     expect(JSON.stringify(detailBody)).not.toContain(SECRET);
     expect(JSON.stringify(detailBody)).not.toContain("id-northgate");
     expect(events.some((event) => event.eventType === "credential_opened")).toBe(true);
+    expect(events.find((event) => event.eventType === "credential_opened")?.metadata).toMatchObject({
+      action: "credential_opened",
+      accessed_by_email: "engineer@bookmax.ai",
+    });
     expect(JSON.stringify(events)).not.toContain(SECRET);
     expect(logs).toContain("internal_credential_opened");
     expect(logs).not.toContain(SECRET);
     spy.mockRestore();
+  });
+
+  it("removes internal access immediately after deprovisioning", async () => {
+    const seeded = await seedQueue();
+    asUser("engineer-1", "engineer@bookmax.ai");
+    const { GET: listGet } = await import("@/app/api/implementation/submissions/route");
+    const { POST: reveal } = await import("@/app/api/implementation/submissions/[id]/credentials/route");
+    const params = Promise.resolve({ id: seeded.row.id });
+    expect((await listGet(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(200);
+
+    setInternalSingletonsForTests({
+      staff: createMemoryStaffStore([staff("viewer-1", "viewer")]),
+    });
+
+    const listed = await listGet(new NextRequest("http://localhost:3000/api/implementation/submissions"));
+    const opened = await reveal(
+      new NextRequest(`http://localhost:3000/api/implementation/submissions/${seeded.row.id}/credentials`, {
+        method: "POST",
+      }),
+      { params },
+    );
+    expect(listed.status).toBe(403);
+    expect(opened.status).toBe(403);
+    expect(JSON.stringify(await opened.json())).not.toContain(SECRET);
+  });
+
+  it("downgrades an engineer to viewer without a new sign-in", async () => {
+    const seeded = await seedQueue();
+    asUser("engineer-1", "engineer@bookmax.ai");
+    await seeded.staffStore.upsert("engineer-1", "viewer");
+    const { GET: listGet } = await import("@/app/api/implementation/submissions/route");
+    const { PATCH } = await import("@/app/api/implementation/submissions/[id]/route");
+    const { POST: reveal } = await import("@/app/api/implementation/submissions/[id]/credentials/route");
+    const params = Promise.resolve({ id: seeded.row.id });
+    const listed = await listGet(new NextRequest("http://localhost:3000/api/implementation/submissions"));
+    const patched = await PATCH(
+      new NextRequest(`http://localhost:3000/api/implementation/submissions/${seeded.row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "Under Review" }),
+      }),
+      { params },
+    );
+    const opened = await reveal(
+      new NextRequest(`http://localhost:3000/api/implementation/submissions/${seeded.row.id}/credentials`, {
+        method: "POST",
+      }),
+      { params },
+    );
+
+    expect(listed.status).toBe(200);
+    expect((await listed.json()).submissions[0].can_open_credentials).toBe(false);
+    expect(patched.status).toBe(403);
+    expect(opened.status).toBe(403);
+    expect(JSON.stringify(await opened.json())).not.toContain(SECRET);
   });
 });
 
@@ -328,26 +442,42 @@ describe("internal submissions freeze", () => {
       "utf8",
     );
 
+    const auth = readFileSync(path.join(root, "lib/implementation/internal/auth.ts"), "utf8");
+    const invitationCredentials = readFileSync(
+      path.join(root, "app/api/implementation/credentials/route.ts"),
+      "utf8",
+    );
+    const connect = readFileSync(path.join(root, "components/setup/ConnectSetupScreen.tsx"), "utf8");
+
     expect(queue).toContain('select("implementation_id, received_at")');
     expect(queue).not.toContain("envelope");
     expect(list).not.toContain("listPrototypeSubmissions");
     expect(list).not.toContain("decryptCredentialSecrets");
     expect(detail).not.toContain("decryptCredentialSecrets");
     expect(page).not.toContain("listPrototypeSubmissions");
-    expect(review).toContain("Open secure credentials");
+    expect(review).toContain("Reveal credentials");
+    expect(review).not.toContain("Open secure credentials");
     expect(review).not.toContain("clientSecret");
     expect(credentialsPage).not.toContain("decryptCredentialSecrets");
     expect(credentialsPage).not.toContain("clientSecret");
     expect(panel).toContain('cache: "no-store"');
     expect(panel).toContain("setRevealed(null)");
+    expect(panel).toContain("Reveal credentials");
     expect(panel).not.toContain("localStorage");
     expect(panel).not.toContain("sessionStorage");
+    expect(panel).not.toContain("indexedDB");
     expect(reveal).toContain("requireEngineer");
     expect(reveal).toContain("revealCredentials");
     expect(reveal).toContain("no-store");
+    expect(auth).not.toContain("endsWith");
+    expect(auth).not.toContain("@frontlinepg.com");
+    expect(auth).toContain("internal_staff.user_id");
     expect(migration).not.toContain("drop table");
     expect(migration).toContain("internal_staff");
     expect(migration).toContain("implementation_audit_events");
+    expect(migration).toContain("insert into public.internal_staff");
+    expect(connect).toContain("/api/setup/credentials");
+    expect(invitationCredentials).not.toContain("encryptCredentialSecrets");
     expect(existsSync(path.join(root, "app/admin/submissions/page.tsx"))).toBe(true);
   });
 });

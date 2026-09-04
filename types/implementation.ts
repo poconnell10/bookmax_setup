@@ -106,6 +106,12 @@ export type SubmissionRecord = {
   credential_type?: CredentialLabel | null;
   can_open_credentials?: boolean;
   can_update_status?: boolean;
+  audit_events?: Array<{
+    eventType: string;
+    actorUserId: string;
+    createdAt: string;
+    metadata: Record<string, string | number | boolean | null>;
+  }>;
   submitted_at: string;
   submitted_by: string;
   status: SubmissionStatus;

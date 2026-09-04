@@ -7,6 +7,7 @@ import { findSetupPms, hostLabel, isSetupCloudPms } from "@/lib/setup/pms-catalo
 import type { CredentialLabel, SubmissionRecord } from "@/types/implementation";
 import type {
   CredentialReceipt,
+  InternalAuditView,
   InternalQueueRow,
   InternalRole,
   InternalSubmissionView,
@@ -60,6 +61,7 @@ export function toInternalSubmissionView(
   row: InternalQueueRow,
   receipt: CredentialReceipt | null,
   role: InternalRole,
+  events: InternalAuditView[] = [],
 ): InternalSubmissionView {
   const { record } = row;
   const pms = findSetupPms(record.intake.pmsId);
@@ -100,5 +102,11 @@ export function toInternalSubmissionView(
     credential_type: received ? credentialTypeForIntake(record.intake) : null,
     can_open_credentials: received && role === "engineer",
     can_update_status: role === "engineer",
+    audit_events: events.map((event) => ({
+      eventType: event.eventType,
+      actorUserId: event.actorUserId,
+      createdAt: event.createdAt,
+      metadata: event.metadata,
+    })),
   };
 }

@@ -84,6 +84,7 @@ export function SubmissionReview({ submission }: { submission: SubmissionRecord 
           <div className="sgrid">
             <Row label="Customer" value={record.organisation} />
             <Row label="Property" value={record.properties.join(", ")} />
+            <Row label="Number of properties" value={String(record.properties.length)} />
             <Row label="Country" value={record.country || "—"} />
             <Row
               label="Primary contact"
@@ -127,7 +128,7 @@ export function SubmissionReview({ submission }: { submission: SubmissionRecord 
             </span>
             {record.can_open_credentials ? (
               <Link href={`/implementation/submissions/${record.submission_id}/credentials`} className="btn sm">
-                Open secure credentials
+                Reveal credentials
               </Link>
             ) : null}
           </div>
@@ -151,6 +152,36 @@ export function SubmissionReview({ submission }: { submission: SubmissionRecord 
           </div>
         </div>
       </div>
+
+      {record.audit_events && record.audit_events.length > 0 ? (
+        <div className="card">
+          <div className="chd">
+            <span className="t">Activity</span>
+            <span className="ro" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--mut-2)" }}>
+              audit
+            </span>
+          </div>
+          <div className="cb">
+            <div className="sgrid">
+              {record.audit_events.map((event, index) => (
+                <Row
+                  key={`${event.eventType}-${event.createdAt}-${index}`}
+                  label={event.eventType === "credential_opened" ? "Credentials revealed" : "Status changed"}
+                  value={[
+                    event.eventType === "status_changed"
+                      ? `${String(event.metadata.previous_status ?? "")} → ${String(event.metadata.new_status ?? "")}`
+                      : "Reveal",
+                    event.metadata.changed_by_email || event.metadata.accessed_by_email || "",
+                    event.createdAt,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

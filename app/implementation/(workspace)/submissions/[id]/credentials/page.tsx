@@ -6,7 +6,7 @@ import { getInternalSubmissionService } from "@/lib/implementation/internal/runt
 import { InternalError } from "@/lib/implementation/internal/types";
 
 export const metadata: Metadata = {
-  title: "Secure credentials",
+  title: "Reveal credentials",
 };
 
 export const dynamic = "force-dynamic";
