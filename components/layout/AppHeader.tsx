@@ -26,7 +26,8 @@ function crumbsFor(pathname: string): { trail: string[]; current: string } {
   }
 
   if (pathname.startsWith("/implementation/submissions/") && pathname !== "/implementation/submissions") {
-    return { trail: ["BookMax", "Submissions"], current: "Review" };
+    const id = pathname.split("/").filter(Boolean).at(-1) || "Review";
+    return { trail: ["BookMax", "Submissions"], current: id === "credentials" ? "Credentials" : id };
   }
 
   if (pathname.startsWith("/implementation/users")) {
@@ -74,6 +75,10 @@ export function AppHeader({ viewerKind }: { viewerKind?: ViewerKind }) {
                   {part}
                 </Link>
               )
+            ) : part === "Submissions" ? (
+              <Link href="/implementation/submissions" className="crumb-home">
+                {part}
+              </Link>
             ) : (
               <span>{part}</span>
             )}

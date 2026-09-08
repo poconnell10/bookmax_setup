@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { LoginScreen } from "@/components/account/LoginScreen";
 import { ActivateScreen } from "@/components/account/ActivateScreen";
-import { customerNavLabels, engineerNavLabels, adminNavLabels } from "@/lib/navigation";
+import { customerNavLabels, engineerNavLabels, adminNavLabels, viewerNavLabels } from "@/lib/navigation";
 
 describe("BookMax sidebar", () => {
   it("shows BookMax navigation without Traqra items or website account links", () => {
@@ -32,12 +32,26 @@ describe("BookMax sidebar", () => {
     expect(customerNavLabels).toEqual(["Setup"]);
     expect(engineerNavLabels).toEqual(["Submissions"]);
     expect(adminNavLabels).toEqual(["Submissions", "Users & Access"]);
+    expect(viewerNavLabels).toEqual(["Submissions"]);
   });
 
   it("hides the internal submissions link from customers", () => {
     render(<Sidebar viewerKind="customer" />);
     expect(screen.getByRole("link", { name: "Setup" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Submissions" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Users & Access" })).not.toBeInTheDocument();
+  });
+
+  it("shows Users & Access for admin only", () => {
+    render(<Sidebar viewerKind="admin" />);
+    expect(screen.getByRole("link", { name: "Submissions" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Users & Access" })).toBeInTheDocument();
+  });
+
+  it("keeps viewer on Submissions without Users & Access", () => {
+    render(<Sidebar viewerKind="viewer" />);
+    expect(screen.getByRole("link", { name: "Submissions" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Users & Access" })).not.toBeInTheDocument();
   });
 });
 

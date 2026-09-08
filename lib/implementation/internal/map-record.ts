@@ -3,7 +3,7 @@ import {
   pmsDisplayName,
   type SetupIntakePayload,
 } from "@/lib/setup/intake";
-import { findSetupPms, hostLabel, isSetupCloudPms } from "@/lib/setup/pms-catalogue";
+import { findSetupPms, isSetupCloudPms, isSetupOhipPms } from "@/lib/setup/pms-catalogue";
 import type { CredentialLabel, SubmissionRecord } from "@/types/implementation";
 import type {
   CredentialReceipt,
@@ -18,13 +18,15 @@ function formatDisplayTime(iso: string): string {
   if (Number.isNaN(date.getTime())) {
     return iso || "—";
   }
-  return date.toLocaleString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return date
+    .toLocaleString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })
+    .replace(",", " at");
 }
 
 export function credentialTypeForIntake(intake: SetupIntakePayload): CredentialLabel {
@@ -37,19 +39,37 @@ export function credentialTypeForIntake(intake: SetupIntakePayload): CredentialL
   return "Access Credentials";
 }
 
+function pmsTypeLabel(pms: ReturnType<typeof findSetupPms>) {
+  if (pms?.host === "cloud") {
+    return "Cloud";
+  }
+  if (pms?.host === "onprem") {
+    return "On-prem";
+  }
+  if (pms?.host === "hybrid") {
+    return "Hybrid";
+  }
+  return "";
+}
+
+function connectionMethodFor(intake: SetupIntakePayload) {
+  if (isSetupOhipPms(intake.pmsId)) {
+    return "OHIP";
+  }
+  return accessMethodLabel(intake.pmsAccessMethod);
+}
+
 function connectionDetails(intake: SetupIntakePayload): Record<string, string> {
   const details: Record<string, string> = {};
   if (intake.enterpriseId.trim()) {
     details["Enterprise ID"] = intake.enterpriseId.trim();
   }
-  if (intake.hotelId.trim()) {
-    details["Hotel ID"] = intake.hotelId.trim();
-  }
-  if (intake.propertyCode.trim()) {
-    details["Property code"] = intake.propertyCode.trim();
+  const hotel = intake.hotelId.trim() || intake.propertyCode.trim();
+  if (hotel) {
+    details["Hotel ID / property code"] = hotel;
   }
   if (intake.apiUrl.trim()) {
-    details["API URL"] = intake.apiUrl.trim();
+    details[isSetupOhipPms(intake.pmsId) ? "OHIP gateway URL" : "API URL"] = intake.apiUrl.trim();
   }
   if (intake.sftpHost.trim()) {
     details["SFTP host"] = intake.sftpHost.trim();
@@ -76,8 +96,8 @@ export function toInternalSubmissionView(
     primary_contact: record.property.contactName || "",
     primary_contact_email: record.contactEmail || "",
     pms: pmsDisplayName(record.intake) || pms?.label || "—",
-    pms_version: hostLabel(pms),
-    pms_type: pms?.kind === "onprem" ? "On-premise" : pms?.kind === "cloud" ? "Cloud" : "",
+    pms_version: "",
+    pms_type: pmsTypeLabel(pms),
     technical_contact: record.intake.sameAsPrimaryContact
       ? record.property.contactName
       : record.intake.technicalContactName,
@@ -85,7 +105,7 @@ export function toInternalSubmissionView(
       ? record.contactEmail
       : record.intake.technicalContactEmail,
     technical_contact_mobile: record.intake.technicalContactMobile,
-    connection_method: accessMethodLabel(record.intake.pmsAccessMethod),
+    connection_method: connectionMethodFor(record.intake),
     connection_details: connectionDetails(record.intake),
     connection_details_status: record.intake.pmsAccessMethod ? "complete" : "not_started",
     credentials_status: received ? "received" : "not_received",

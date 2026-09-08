@@ -1,10 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PropertyScreen } from "@/components/setup/PropertyScreen";
 import { IntakeProvider } from "@/components/intake/IntakeProvider";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { AppShell } from "@/components/layout/AppShell";
+import { usePathname } from "next/navigation";
 
 function renderIntake(ui: ReactElement) {
   return render(<IntakeProvider>{ui}</IntakeProvider>);
@@ -30,6 +31,7 @@ describe("implementation shell", () => {
   });
 
   it("keeps internal submissions inside the application shell", () => {
+    vi.mocked(usePathname).mockReturnValue("/implementation/submissions");
     render(
       <IntakeProvider>
         <AppShell viewerKind="engineer">
@@ -40,7 +42,8 @@ describe("implementation shell", () => {
 
     expect(screen.getByRole("navigation", { name: "BookMax" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Setup" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Submissions" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Submissions" })).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByRole("link", { name: "Users & Access" })).not.toBeInTheDocument();
     expect(screen.getByRole("main")).toHaveTextContent("Shell content");
     expect(screen.queryByText(/traqra/i)).not.toBeInTheDocument();
   });
