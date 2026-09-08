@@ -88,6 +88,13 @@ describe("Users & Access HTML fidelity", () => {
     expect(screen.getByText("Access history")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Disable access" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Close" }).length).toBeGreaterThan(0);
+    const identityLabel = screen.getByText("Identity");
+    const identityValue = screen.getByText("Provisioned");
+    expect(identityLabel.tagName).toBe("SPAN");
+    expect(identityValue.tagName).toBe("SPAN");
+    expect(identityLabel.nextElementSibling).toBe(identityValue);
+    expect(identityLabel.parentElement?.className).toBe("kv");
+    expect(identityLabel.parentElement?.parentElement?.className).toBe("idmeta");
   });
 
   it("opens the provision drawer from a pending row", async () => {
