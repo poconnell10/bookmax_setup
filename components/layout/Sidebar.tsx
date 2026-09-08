@@ -7,6 +7,11 @@ import { canSeeInternalNav, canSeeUsersNav, type ViewerKind } from "@/lib/access
 import { SignOutButton } from "@/components/access/SignOutButton";
 import { itemIsActive, NAV_SECTIONS, navAudienceFor } from "@/lib/navigation";
 
+export type ShellIdentity = {
+  email: string;
+  name: string | null;
+};
+
 const ICONS: Record<string, ReactNode> = {
   setup: (
     <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -17,14 +22,14 @@ const ICONS: Record<string, ReactNode> = {
   ),
   submissions: (
     <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+      <path d="M4 4h16v16H4z" />
+      <path d="M8 9h8M8 13h5" />
     </svg>
   ),
   users: (
     <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-      <circle cx="9.5" cy="7" r="4" />
-      <path d="M20 8v6M17 11h6" />
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3 20a6 6 0 0 1 12 0M16 6a3 3 0 0 1 0 6M21 20a5 5 0 0 0-4-5" />
     </svg>
   ),
 };
@@ -34,14 +39,40 @@ const ROLE_LABEL: Record<ViewerKind, string> = {
   engineer: "Engineer",
   viewer: "Viewer",
   customer: "Customer",
-  pending: "Pending",
+  pending: "No access",
   disabled: "Disabled",
 };
 
-export function Sidebar({ viewerKind = "customer" }: { viewerKind?: ViewerKind }) {
+function initials(name: string) {
+  const parts = name.split(/[\s@._-]+/).filter(Boolean).slice(0, 2);
+  const value = parts.map((part) => part[0]).join("").toUpperCase();
+  return value || "?";
+}
+
+function displayName(identity?: ShellIdentity) {
+  if (!identity) {
+    return null;
+  }
+  if (identity.name?.trim()) {
+    return identity.name.trim();
+  }
+  if (identity.email) {
+    return identity.email.split("@")[0] || identity.email;
+  }
+  return null;
+}
+
+export function Sidebar({
+  viewerKind = "customer",
+  identity,
+}: {
+  viewerKind?: ViewerKind;
+  identity?: ShellIdentity;
+}) {
   const pathname = usePathname();
   const allowed = new Set(navAudienceFor(viewerKind));
   const showSignOut = canSeeInternalNav(viewerKind) || canSeeUsersNav(viewerKind);
+  const who = displayName(identity);
 
   return (
     <aside className="sb">
@@ -88,7 +119,11 @@ export function Sidebar({ viewerKind = "customer" }: { viewerKind?: ViewerKind }
       {showSignOut ? (
         <div className="sfoot">
           <div className="who">
-            <span className="rl">{ROLE_LABEL[viewerKind]}</span>
+            {who ? <span className="av">{initials(who)}</span> : null}
+            <span className="wt">
+              {who ? <span className="nm">{who}</span> : null}
+              <span className="rl">{ROLE_LABEL[viewerKind]}</span>
+            </span>
           </div>
           <SignOutButton />
         </div>

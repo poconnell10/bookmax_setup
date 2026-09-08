@@ -57,23 +57,37 @@ export async function requireAdmin(request: NextRequest): Promise<InternalSessio
   return staff;
 }
 
-export async function getInternalViewerKind(): Promise<ViewerKind> {
+export type InternalViewer = {
+  kind: ViewerKind;
+  email: string;
+  name: string | null;
+};
+
+export async function getInternalViewer(): Promise<InternalViewer> {
   try {
     const supabase = await createSupabaseServerClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
     const decision = await resolveAuthorization({ userId: user?.id, email: user?.email });
+    const email = user?.email ?? "";
     if (decision.kind === "internal") {
-      return decision.role;
+      return { kind: decision.role, email, name: null };
     }
     if (decision.kind === "customer") {
-      return "customer";
+      return { kind: "customer", email, name: null };
     }
-    return "pending";
+    if (decision.kind === "disabled") {
+      return { kind: "disabled", email, name: null };
+    }
+    return { kind: "pending", email, name: null };
   } catch {
-    return "pending";
+    return { kind: "pending", email: "", name: null };
   }
+}
+
+export async function getInternalViewerKind(): Promise<ViewerKind> {
+  return (await getInternalViewer()).kind;
 }
 
 async function currentDecision() {

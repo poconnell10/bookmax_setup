@@ -15,6 +15,8 @@ export function TraqraSelect({
   placeholder,
   ariaLabel,
   listLabel,
+  searchable,
+  className,
   onChange,
 }: {
   id: string;
@@ -23,12 +25,15 @@ export function TraqraSelect({
   placeholder: string;
   ariaLabel?: string;
   listLabel?: string;
+  searchable?: boolean;
+  className?: string;
   onChange: (value: string) => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const selected = options.find((item) => item.value === value);
+  const showSearch = searchable ?? options.length >= 9;
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) {
@@ -69,7 +74,7 @@ export function TraqraSelect({
   }, [open]);
 
   return (
-    <div ref={rootRef} className={`tsel${open ? " open" : ""}`} id={id}>
+    <div ref={rootRef} className={`tsel${open ? " open" : ""}${className ? ` ${className}` : ""}`} id={id}>
       <button
         type="button"
         className="trig"
@@ -90,18 +95,20 @@ export function TraqraSelect({
       </button>
       {open ? (
         <div className="menu">
-          <div className="msearch">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.3-4.3" />
-            </svg>
-            <input
-              value={query}
-              placeholder={`Search ${options.length} options…`}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </div>
-          <div className="mscroll" role="listbox" aria-label={listLabel || "Property management systems"}>
+          {showSearch ? (
+            <div className="msearch">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
+              <input
+                value={query}
+                placeholder={`Search ${options.length} options…`}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
+          ) : null}
+          <div className="mscroll" role="listbox" aria-label={listLabel || "Options"}>
             {filtered.length === 0 ? (
               <div className="mempty">No match for “{query}”</div>
             ) : (

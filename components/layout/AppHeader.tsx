@@ -3,7 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useIntakeOptional } from "@/components/intake/IntakeProvider";
+import type { ViewerKind } from "@/lib/access/viewer";
 import { IMPLEMENTATION_STAGES, isSetupStagePath } from "@/lib/stages";
+
+const ROLE_BADGE: Record<ViewerKind, { label: string; tone: string }> = {
+  admin: { label: "Admin", tone: "adm" },
+  engineer: { label: "Engineer", tone: "info" },
+  viewer: { label: "Viewer", tone: "mut" },
+  customer: { label: "Customer", tone: "ok" },
+  pending: { label: "No access", tone: "pend" },
+  disabled: { label: "Disabled", tone: "off" },
+};
 
 function crumbsFor(pathname: string): { trail: string[]; current: string } {
   if (pathname.startsWith("/implementation/thanks") || pathname.startsWith("/implementation/submitted")) {
@@ -42,11 +52,12 @@ function crumbsFor(pathname: string): { trail: string[]; current: string } {
   return { trail: ["BookMax"], current: "Implementation Setup" };
 }
 
-export function AppHeader() {
+export function AppHeader({ viewerKind }: { viewerKind?: ViewerKind }) {
   const pathname = usePathname();
   const intake = useIntakeOptional();
   const { trail, current } = crumbsFor(pathname);
   const showSave = isSetupStagePath(pathname) && Boolean(intake);
+  const role = viewerKind ? ROLE_BADGE[viewerKind] : null;
 
   return (
     <header className="intake-top">
@@ -66,6 +77,12 @@ export function AppHeader() {
         <span className="sep">/</span>
         <span className="cur">{current}</span>
       </div>
+      {role ? (
+        <div className="asrole">
+          <span>Signed in as</span>
+          <span className={`bd ${role.tone}`}>{role.label}</span>
+        </div>
+      ) : null}
       {showSave ? (
         <div className="top-r">
           <span className="saved">
