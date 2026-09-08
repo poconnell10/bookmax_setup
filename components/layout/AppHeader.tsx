@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useIntakeOptional } from "@/components/intake/IntakeProvider";
-import type { ViewerKind } from "@/lib/access/viewer";
+import { canSeeInternalNav, canSeeUsersNav, type ViewerKind } from "@/lib/access/viewer";
 import { IMPLEMENTATION_STAGES, isSetupStagePath } from "@/lib/stages";
 
 const ROLE_BADGE: Record<ViewerKind, { label: string; tone: string }> = {
@@ -58,6 +58,7 @@ export function AppHeader({ viewerKind }: { viewerKind?: ViewerKind }) {
   const { trail, current } = crumbsFor(pathname);
   const showSave = isSetupStagePath(pathname) && Boolean(intake);
   const role = viewerKind ? ROLE_BADGE[viewerKind] : null;
+  const internal = viewerKind ? canSeeInternalNav(viewerKind) || canSeeUsersNav(viewerKind) : false;
 
   return (
     <header className="intake-top">
@@ -66,9 +67,13 @@ export function AppHeader({ viewerKind }: { viewerKind?: ViewerKind }) {
           <span key={`${part}-${index}`}>
             {index > 0 ? <span className="sep">/</span> : null}
             {index === 0 ? (
-              <Link href="/implementation/property" className="crumb-home">
-                {part}
-              </Link>
+              internal ? (
+                <span>{part}</span>
+              ) : (
+                <Link href="/implementation/property" className="crumb-home">
+                  {part}
+                </Link>
+              )
             ) : (
               <span>{part}</span>
             )}

@@ -71,16 +71,21 @@ export async function getInternalViewer(): Promise<InternalViewer> {
     } = await supabase.auth.getUser();
     const decision = await resolveAuthorization({ userId: user?.id, email: user?.email });
     const email = user?.email ?? "";
+    const metadata = user?.user_metadata as Record<string, unknown> | undefined;
+    const rawName = [metadata?.full_name, metadata?.name].find(
+      (value): value is string => typeof value === "string" && value.trim().length > 0,
+    );
+    const name = rawName?.trim() ?? null;
     if (decision.kind === "internal") {
-      return { kind: decision.role, email, name: null };
+      return { kind: decision.role, email, name };
     }
     if (decision.kind === "customer") {
-      return { kind: "customer", email, name: null };
+      return { kind: "customer", email, name };
     }
     if (decision.kind === "disabled") {
-      return { kind: "disabled", email, name: null };
+      return { kind: "disabled", email, name };
     }
-    return { kind: "pending", email, name: null };
+    return { kind: "pending", email, name };
   } catch {
     return { kind: "pending", email: "", name: null };
   }

@@ -2187,11 +2187,32 @@ table.log tbody tr.rowlink:hover td {
   --purple-line: #ddcffa;
   --sb-act: #5b93ff;
   --sb-act-bg: rgba(91, 147, 255, 0.13);
+  --mono: var(--font-mono), ui-monospace, "JetBrains Mono", monospace;
 }
 
 .app-internal .intake-wrap {
   max-width: 1160px;
   padding: 22px 22px 80px;
+}
+
+.app-internal h1 {
+  font-family: var(--dsp);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  color: var(--ink);
+}
+
+.app-internal .btn:not(.sm) {
+  padding: 8px 13px;
+}
+
+.app-internal .n:hover {
+  color: var(--sb-txt);
+}
+
+.app-internal .n.on:hover {
+  color: #fff;
 }
 
 .app-internal .btn.pri:hover:not(:disabled) {
@@ -2216,7 +2237,7 @@ table.log tbody tr.rowlink:hover td {
   flex: none;
 }
 
-.app-internal .asrole span {
+.app-internal .asrole > span:not(.bd) {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.09em;
@@ -2233,6 +2254,36 @@ table.log tbody tr.rowlink:hover td {
   padding: 3px 9px;
   border-radius: 99px;
   text-transform: none;
+}
+
+.app-internal .bd.adm {
+  color: var(--purple);
+  background: var(--purple-bg);
+}
+
+.app-internal .bd.info {
+  color: var(--blue);
+  background: var(--blue-bg);
+}
+
+.app-internal .bd.ok {
+  color: var(--green);
+  background: var(--green-bg);
+}
+
+.app-internal .bd.mut {
+  color: var(--mut);
+  background: var(--line-2);
+}
+
+.app-internal .bd.pend {
+  color: var(--amber);
+  background: var(--amber-bg);
+}
+
+.app-internal .bd.off {
+  color: var(--red);
+  background: var(--red-bg);
 }
 
 .app-internal .sfoot .who {
@@ -2318,6 +2369,10 @@ table.log tbody tr.rowlink:hover td {
   font-size: 12.5px;
   font-weight: 500;
   color: var(--ink-2);
+}
+
+.app-internal .ua .fv.acct {
+  font-size: 12.5px;
 }
 
 .app-internal .filters {
@@ -2568,6 +2623,42 @@ table.log tbody tr.rowlink:hover td {
 .app-internal .dhd {
   padding: 16px 20px;
   align-items: flex-start;
+  flex: none;
+}
+
+.app-internal .dhd .t {
+  letter-spacing: -0.02em;
+}
+
+.app-internal .dbd {
+  min-height: 0;
+}
+
+.app-internal .opt {
+  width: 100%;
+  align-items: flex-start;
+  font-family: var(--font);
+}
+
+.app-internal .opt:hover {
+  border-color: #cfd6e2;
+}
+
+.app-internal .opt.on:hover {
+  border-color: var(--blue);
+}
+
+.app-internal .idmeta {
+  gap: 12px 18px;
+}
+
+.app-internal .ae:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.app-internal .empty b {
+  color: var(--ink);
 }
 
 .app-internal .dhd .x {
@@ -2589,6 +2680,7 @@ table.log tbody tr.rowlink:hover td {
   padding: 13px 20px;
   align-items: center;
   justify-content: space-between;
+  flex: none;
 }
 
 .app-internal .idcard .nm2 {

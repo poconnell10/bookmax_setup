@@ -44,4 +44,19 @@ describe("implementation shell", () => {
     expect(screen.getByRole("main")).toHaveTextContent("Shell content");
     expect(screen.queryByText(/traqra/i)).not.toBeInTheDocument();
   });
+
+  it("does not send internal users to the customer property breadcrumb", () => {
+    render(
+      <IntakeProvider>
+        <AppShell viewerKind="admin" identity={{ email: "admin@bookmax.ai", name: "Padraig O'Connell" }}>
+          <p>Users</p>
+        </AppShell>
+      </IntakeProvider>,
+    );
+
+    expect(screen.getByText("Padraig O'Connell")).toBeInTheDocument();
+    expect(screen.getByText("Signed in as")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "BookMax" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Setup" })).not.toBeInTheDocument();
+  });
 });

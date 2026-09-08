@@ -421,7 +421,8 @@ export function UsersAccessScreen({
   const chipOn = (key: FilterKey) => filter === key && !statusFilter;
 
   return (
-    <div className="step ua">
+    <>
+    <div className="ua">
       <div className="phead">
         <div>
           <h1>Users &amp; Access</h1>
@@ -521,7 +522,7 @@ export function UsersAccessScreen({
                 </div>
                 <div>
                   <span className="fk">Account type</span>
-                  <span className={`fv${pending ? " na" : ""}`}>{accountLabel(row.accountType)}</span>
+                  <span className={`fv acct${pending ? " na" : ""}`}>{accountLabel(row.accountType)}</span>
                 </div>
                 <div>
                   <span className="fk">Role</span>
@@ -555,22 +556,12 @@ export function UsersAccessScreen({
           })
         )}
       </div>
+    </div>
 
       {mode !== "closed" ? (
-        <div
-          className="scrim on"
-          role="presentation"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              closeDrawer();
-            }
-          }}
-        >
-          <aside
-            className="drw on"
-            aria-label={mode === "provision" ? "Provision user" : "Manage access"}
-            onClick={(event) => event.stopPropagation()}
-          >
+        <>
+          <div className="scrim on" role="presentation" onClick={closeDrawer} />
+          <aside className="drw on" aria-label={mode === "provision" ? "Provision user" : "Manage access"}>
             <div className="dhd">
               <div>
                 <div className="t">{mode === "provision" ? "Provision user" : "Manage access"}</div>
@@ -688,7 +679,7 @@ export function UsersAccessScreen({
               ) : null}
             </div>
           </aside>
-        </div>
+        </>
       ) : null}
 
       {toast ? (
@@ -699,7 +690,7 @@ export function UsersAccessScreen({
           <span>{toast}</span>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
 
