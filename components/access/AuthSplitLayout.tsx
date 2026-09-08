@@ -15,8 +15,7 @@ export function AuthSplitLayout({ children }: { children: ReactNode }) {
       <aside className="brandside">
         <div className="bmark">
           <BrandMark />
-          <span className="wm">traqra</span>
-          <span className="pd">BookMax</span>
+          <span className="wm">BookMax</span>
         </div>
         <div className="bpitch">
           <h2>Your BookMax implementation, in five steps.</h2>
@@ -44,9 +43,7 @@ export function AuthSplitLayout({ children }: { children: ReactNode }) {
         <div className="shell">
           <div className="mobmark">
             <BrandMark />
-            <span className="wm">
-              traqra <span style={{ color: "var(--mut-2)", fontWeight: 500 }}>BookMax</span>
-            </span>
+            <span className="wm">BookMax</span>
           </div>
           <section className="view on">{children}</section>
         </div>

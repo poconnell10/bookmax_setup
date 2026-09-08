@@ -12,6 +12,8 @@ import {
 import { createMemoryCredentialStore } from "@/lib/setup/credentials/memory-store";
 import { createCredentialService } from "@/lib/setup/credentials/service";
 import { setCredentialSingletonsForTests } from "@/lib/setup/credentials/runtime";
+import { createMemoryStaffStore } from "@/lib/implementation/internal/memory-staff-store";
+import { setInternalSingletonsForTests } from "@/lib/implementation/internal/runtime";
 import type { CredentialStore } from "@/lib/setup/credentials/store";
 
 const TEST_KEY = Buffer.alloc(32, 9).toString("base64");
@@ -37,6 +39,7 @@ async function seedCloudCustomer() {
   const customer = createCustomerService(customerStore);
   const credentialStore = createMemoryCredentialStore();
   setCustomerSingletonsForTests({ store: customerStore, service: customer });
+  setInternalSingletonsForTests({ staff: createMemoryStaffStore() });
   setCredentialSingletonsForTests({
     store: credentialStore,
     service: createCredentialService(credentialStore, customer),
@@ -100,6 +103,7 @@ describe("M3B.1 credential API", () => {
   afterEach(() => {
     setCustomerSingletonsForTests({ store: null, service: null });
     setCredentialSingletonsForTests({ store: null, service: null });
+    setInternalSingletonsForTests({ staff: null, service: null });
   });
 
   it("rejects unauthenticated POST and GET", async () => {
@@ -122,6 +126,7 @@ describe("M3B.1 credential API", () => {
     const customer = createCustomerService(customerStore);
     const store = createMemoryCredentialStore();
     setCustomerSingletonsForTests({ store: customerStore, service: customer });
+    setInternalSingletonsForTests({ staff: createMemoryStaffStore() });
     setCredentialSingletonsForTests({ store, service: createCredentialService(store, customer) });
     await customer.ensureForUser("user-1");
     await customer.saveProperty("user-1", { name: "Hotel", city: "London", country: "uk", contactName: "Jane" });
@@ -165,6 +170,7 @@ describe("M3B.1 credential API", () => {
     const customer = createCustomerService(customerStore);
     const store = createMemoryCredentialStore();
     setCustomerSingletonsForTests({ store: customerStore, service: customer });
+    setInternalSingletonsForTests({ staff: createMemoryStaffStore() });
     setCredentialSingletonsForTests({ store, service: createCredentialService(store, customer) });
     await customer.ensureForUser("user-1");
     await customer.saveProperty("user-1", { name: "Hotel", city: "London", country: "uk", contactName: "Jane" });

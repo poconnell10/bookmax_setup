@@ -5,6 +5,8 @@ import { PENDING_EMAIL_COOKIE } from "@/lib/access/pending-email";
 import { createCustomerService } from "@/lib/implementation/customer/service";
 import { createMemoryCustomerStore } from "@/lib/implementation/customer/memory-store";
 import { setCustomerSingletonsForTests } from "@/lib/implementation/customer/runtime";
+import { createMemoryStaffStore } from "@/lib/implementation/internal/memory-staff-store";
+import { setInternalSingletonsForTests } from "@/lib/implementation/internal/runtime";
 
 const ENV = {
   NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
@@ -46,6 +48,7 @@ describe("M1 OTP API", () => {
       store,
       service: createCustomerService(store),
     });
+    setInternalSingletonsForTests({ staff: createMemoryStaffStore() });
     authMocks.signInWithOtp.mockReset();
     authMocks.verifyOtp.mockReset();
     authMocks.getUser.mockReset();
@@ -53,6 +56,7 @@ describe("M1 OTP API", () => {
 
   afterEach(() => {
     setCustomerSingletonsForTests({ store: null, service: null });
+    setInternalSingletonsForTests({ staff: null, service: null });
   });
 
   it("AUTH-001 — sends OTP for a valid new email", async () => {
@@ -87,7 +91,7 @@ describe("M1 OTP API", () => {
     expect(authMocks.signInWithOtp).not.toHaveBeenCalled();
   });
 
-  it("AUTH-004 / AUTH-012 — valid OTP authenticates and creates one implementation", async () => {
+  it("AUTH-004 — valid OTP for an unknown user does not create a customer implementation", async () => {
     authMocks.verifyOtp.mockResolvedValue({
       data: {
         user: { id: "user-1", email: "jane@hotel.com" },
@@ -108,14 +112,30 @@ describe("M1 OTP API", () => {
     const firstBody = await first.json();
     expect(first.status).toBe(200);
     expect(firstBody.ok).toBe(true);
-    expect(firstBody.implementation.id).toBeTruthy();
+    expect(firstBody.resumePath).toBe("/access/pending");
+    expect(firstBody.implementation).toBeNull();
     expect(authMocks.verifyOtp).toHaveBeenCalledWith({
       email: "jane@hotel.com",
       token: "123456",
       type: "email",
     });
+  });
 
-    const second = await POST(
+  it("AUTH-012 — provisioned customer OTP resumes the existing implementation", async () => {
+    const store = createMemoryCustomerStore();
+    const service = createCustomerService(store);
+    setCustomerSingletonsForTests({ store, service });
+    setInternalSingletonsForTests({ staff: createMemoryStaffStore() });
+    const existing = await service.ensureForUser("user-1");
+    authMocks.verifyOtp.mockResolvedValue({
+      data: {
+        user: { id: "user-1", email: "jane@hotel.com" },
+        session: { access_token: "a", refresh_token: "r" },
+      },
+      error: null,
+    });
+    const { POST } = await import("@/app/api/access/otp/verify/route");
+    const response = await POST(
       new NextRequest("http://localhost:3000/api/access/otp/verify", {
         method: "POST",
         headers: {
@@ -125,8 +145,10 @@ describe("M1 OTP API", () => {
         body: JSON.stringify({ code: "123456" }),
       }),
     );
-    const secondBody = await second.json();
-    expect(secondBody.implementation.id).toBe(firstBody.implementation.id);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.implementation.id).toBe(existing.implementation.id);
+    expect(body.resumePath).toBe("/setup/property");
   });
 
   it("AUTH-005 — wrong OTP does not create a session", async () => {
@@ -196,12 +218,14 @@ describe("M1 property API and tenancy", () => {
 
   afterEach(() => {
     setCustomerSingletonsForTests({ store: null, service: null });
+    setInternalSingletonsForTests({ staff: null, service: null });
   });
 
   it("PROPERTY-003 / PROPERTY-004 — saves one property and repeats do not duplicate", async () => {
     const store = createMemoryCustomerStore();
     const service = createCustomerService(store);
     setCustomerSingletonsForTests({ store, service });
+    setInternalSingletonsForTests({ staff: createMemoryStaffStore() });
     await service.ensureForUser("user-a");
     authMocks.getUser.mockResolvedValue({
       data: { user: { id: "user-a", email: "a@hotel.com" } },
@@ -246,6 +270,7 @@ describe("M1 property API and tenancy", () => {
     const store = createMemoryCustomerStore();
     const service = createCustomerService(store);
     setCustomerSingletonsForTests({ store, service });
+    setInternalSingletonsForTests({ staff: createMemoryStaffStore() });
     const a = await service.ensureForUser("user-a");
     await service.ensureForUser("user-b");
     authMocks.getUser.mockResolvedValue({
@@ -268,6 +293,7 @@ describe("M1 property API and tenancy", () => {
     const store = createMemoryCustomerStore();
     const service = createCustomerService(store);
     setCustomerSingletonsForTests({ store, service });
+    setInternalSingletonsForTests({ staff: createMemoryStaffStore() });
     await service.ensureForUser("user-a");
     const saved = await service.saveProperty("user-a", {
       name: "Hotel A",

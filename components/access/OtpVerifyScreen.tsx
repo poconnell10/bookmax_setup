@@ -69,7 +69,7 @@ export function OtpVerifyScreen() {
         setError(payload.error || OTP_INVALID_ERROR);
         return;
       }
-      router.push(payload.resumePath || "/setup/property");
+      router.push(payload.resumePath || "/access/pending");
     } catch {
       setError(OTP_NETWORK_ERROR);
     } finally {

@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCustomerService } from "@/lib/implementation/customer/service";
 import { createMemoryCustomerStore } from "@/lib/implementation/customer/memory-store";
 import { setCustomerSingletonsForTests } from "@/lib/implementation/customer/runtime";
+import { createMemoryStaffStore } from "@/lib/implementation/internal/memory-staff-store";
+import { setInternalSingletonsForTests } from "@/lib/implementation/internal/runtime";
 
 const authMocks = vi.hoisted(() => ({
   getUser: vi.fn(),
@@ -26,6 +28,7 @@ describe("M2 setup API", () => {
       store,
       service: createCustomerService(store),
     });
+    setInternalSingletonsForTests({ staff: createMemoryStaffStore() });
     authMocks.getUser.mockReset();
     authMocks.getUser.mockResolvedValue({
       data: { user: { id: "user-1", email: "jane@hotel.com" } },
@@ -35,6 +38,7 @@ describe("M2 setup API", () => {
 
   afterEach(() => {
     setCustomerSingletonsForTests({ store: null, service: null });
+    setInternalSingletonsForTests({ staff: null, service: null });
   });
 
   it("INTAKE-001 — saves PMS selection after property exists", async () => {
@@ -67,6 +71,7 @@ describe("M2 setup API", () => {
     const store = createMemoryCustomerStore();
     const service = createCustomerService(store);
     setCustomerSingletonsForTests({ store, service });
+    setInternalSingletonsForTests({ staff: createMemoryStaffStore() });
     await service.ensureForUser("user-1");
     await service.saveProperty("user-1", {
       name: "Hotel",

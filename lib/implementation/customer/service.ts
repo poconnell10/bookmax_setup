@@ -81,6 +81,10 @@ export function createCustomerService(store: CustomerStore) {
     if (!context) {
       throw new CustomerError("forbidden", "Sign in to continue.");
     }
+    const membership = await store.findMembershipByUserId(userId);
+    if (membership?.status === "disabled") {
+      throw new CustomerError("forbidden", "You cannot access that implementation.");
+    }
     return context;
   }
 

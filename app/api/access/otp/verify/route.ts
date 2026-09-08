@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { landingPath, resolveAuthorization } from "@/lib/access/authorization";
 import { maskEmail } from "@/lib/access/email";
 import { logAccess } from "@/lib/access/log";
 import {
@@ -59,17 +60,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const decision = await resolveAuthorization({
+      userId: data.user.id,
+      email: data.user.email,
+    });
     const service = getCustomerService();
-    const context = await service.ensureForUser(data.user.id);
-    logAccess("otp_verified", { implementationId: context.implementation.id });
+    let resume = landingPath(decision);
+    let implementation = null;
+    let property = null;
+
+    if (decision.kind === "customer") {
+      const context = await service.getForUser(data.user.id);
+      resume = service.resumePath(context);
+      implementation = context.implementation;
+      property = context.property;
+    }
+
+    logAccess("otp_verified", { kind: decision.kind });
 
     const response = attachAuthCookies(
       NextResponse.json({
         ok: true,
         emailMasked: maskEmail(data.user.email),
-        implementation: context.implementation,
-        property: context.property,
-        resumePath: service.resumePath(context),
+        kind: decision.kind,
+        implementation,
+        property,
+        resumePath: resume,
       }),
     );
     clearPendingEmailCookie(response);

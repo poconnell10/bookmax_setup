@@ -32,14 +32,14 @@ describe("implementation shell", () => {
   it("keeps internal submissions inside the application shell", () => {
     render(
       <IntakeProvider>
-        <AppShell viewerKind="internal">
+        <AppShell viewerKind="engineer">
           <p>Shell content</p>
         </AppShell>
       </IntakeProvider>,
     );
 
     expect(screen.getByRole("navigation", { name: "BookMax" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Setup" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Setup" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Submissions" })).toBeInTheDocument();
     expect(screen.getByRole("main")).toHaveTextContent("Shell content");
     expect(screen.queryByText(/traqra/i)).not.toBeInTheDocument();

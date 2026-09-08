@@ -190,7 +190,7 @@ describe("M1 OTP verification screen", () => {
     vi.unstubAllGlobals();
   });
 
-  it("AUTH-004 — valid OTP routes to property setup", async () => {
+  it("AUTH-004 — valid OTP without a resume path stays off customer setup", async () => {
     stubAccessApis();
     render(<OtpVerifyScreen />);
     await screen.findByText(/j••••@hotel.com/);
@@ -200,7 +200,7 @@ describe("M1 OTP verification screen", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     await waitFor(() => {
-      expect(push).toHaveBeenCalledWith("/setup/property");
+      expect(push).toHaveBeenCalledWith("/access/pending");
     });
   });
 

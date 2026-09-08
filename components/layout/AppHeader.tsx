@@ -19,6 +19,10 @@ function crumbsFor(pathname: string): { trail: string[]; current: string } {
     return { trail: ["BookMax", "Submissions"], current: "Review" };
   }
 
+  if (pathname.startsWith("/implementation/users")) {
+    return { trail: ["BookMax"], current: "Users & Access" };
+  }
+
   if (pathname.startsWith("/implementation/submissions") || pathname.startsWith("/submissions")) {
     return { trail: ["BookMax"], current: "Submissions" };
   }

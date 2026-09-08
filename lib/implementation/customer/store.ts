@@ -10,6 +10,12 @@ import type {
 
 export type CustomerStore = {
   findMembershipByUserId(userId: string): Promise<ImplementationMembership | null>;
+  listMemberships(): Promise<ImplementationMembership[]>;
+  listImplementations(): Promise<CustomerImplementation[]>;
+  updateMembership(userId: string, input: {
+    implementationId?: string;
+    status?: ImplementationMembership["status"];
+  }): Promise<ImplementationMembership>;
   findImplementationById(id: string): Promise<CustomerImplementation | null>;
   findPropertyByImplementationId(implementationId: string): Promise<CustomerProperty | null>;
   findPropertyById(id: string): Promise<CustomerProperty | null>;

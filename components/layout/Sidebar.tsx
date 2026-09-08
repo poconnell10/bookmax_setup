@@ -3,8 +3,9 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { canSeeInternalNav, type ViewerKind } from "@/lib/access/viewer";
-import { itemIsActive, NAV_SECTIONS } from "@/lib/navigation";
+import { canSeeInternalNav, canSeeUsersNav, type ViewerKind } from "@/lib/access/viewer";
+import { SignOutButton } from "@/components/access/SignOutButton";
+import { itemIsActive, NAV_SECTIONS, navAudienceFor } from "@/lib/navigation";
 
 const ICONS: Record<string, ReactNode> = {
   setup: (
@@ -19,31 +20,28 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
     </svg>
   ),
-  activate: (
+  users: (
     <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
       <circle cx="9.5" cy="7" r="4" />
       <path d="M20 8v6M17 11h6" />
     </svg>
   ),
-  login: (
-    <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-      <path d="M10 17l5-5-5-5M15 12H3" />
-    </svg>
-  ),
-  help: (
-    <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4" />
-      <path d="M12 17h.01" />
-    </svg>
-  ),
+};
+
+const ROLE_LABEL: Record<ViewerKind, string> = {
+  admin: "Admin",
+  engineer: "Engineer",
+  viewer: "Viewer",
+  customer: "Customer",
+  pending: "Pending",
+  disabled: "Disabled",
 };
 
 export function Sidebar({ viewerKind = "customer" }: { viewerKind?: ViewerKind }) {
   const pathname = usePathname();
-  const showInternal = canSeeInternalNav(viewerKind);
+  const allowed = new Set(navAudienceFor(viewerKind));
+  const showSignOut = canSeeInternalNav(viewerKind) || canSeeUsersNav(viewerKind);
 
   return (
     <aside className="sb">
@@ -61,10 +59,7 @@ export function Sidebar({ viewerKind = "customer" }: { viewerKind?: ViewerKind }
       </div>
       <nav className="sbody" aria-label="BookMax">
         {NAV_SECTIONS.map((section) => {
-          const items = section.items.filter(
-            (item) => item.audience === "all" || showInternal,
-          );
-
+          const items = section.items.filter((item) => allowed.has(item.audience));
           if (items.length === 0) {
             return null;
           }
@@ -90,6 +85,14 @@ export function Sidebar({ viewerKind = "customer" }: { viewerKind?: ViewerKind }
           );
         })}
       </nav>
+      {showSignOut ? (
+        <div className="sfoot">
+          <div className="who">
+            <span className="rl">{ROLE_LABEL[viewerKind]}</span>
+          </div>
+          <SignOutButton />
+        </div>
+      ) : null}
     </aside>
   );
 }

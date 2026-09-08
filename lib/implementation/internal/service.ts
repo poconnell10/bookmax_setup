@@ -1,3 +1,4 @@
+import { canMutateSubmissions } from "@/lib/access/capabilities";
 import { logAccess } from "@/lib/access/log";
 import { decryptCredentialSecrets } from "@/lib/setup/credentials/encrypt";
 import type { CredentialStore } from "@/lib/setup/credentials/store";
@@ -47,7 +48,7 @@ export function createInternalSubmissionService(deps: {
     id: string,
     status: SubmissionStatus,
   ): Promise<InternalSubmissionView> {
-    if (staff.role !== "engineer") {
+    if (!canMutateSubmissions(staff.role)) {
       throw new InternalError("forbidden", "You cannot change implementation status.");
     }
     if (!SUBMISSION_STATUSES.includes(status)) {
@@ -79,7 +80,7 @@ export function createInternalSubmissionService(deps: {
   }
 
   async function revealCredentials(staff: StaffActor, id: string): Promise<RevealedCredentials> {
-    if (staff.role !== "engineer") {
+    if (!canMutateSubmissions(staff.role)) {
       throw new InternalError("forbidden", "You cannot reveal credentials.");
     }
     const row = await deps.queue.getById(id);

@@ -39,7 +39,14 @@ vi.mock("@/lib/supabase/auth-clients", () => ({
 }));
 
 function staff(userId: string, role: InternalStaff["role"]): InternalStaff {
-  return { userId, role, createdAt: "2026-09-04T12:00:00.000Z" };
+  return {
+    userId,
+    role,
+    status: "active",
+    createdAt: "2026-09-04T12:00:00.000Z",
+    updatedAt: "2026-09-04T12:00:00.000Z",
+    provisionedBy: null,
+  };
 }
 
 async function seedQueue() {
@@ -392,7 +399,12 @@ describe("internal submissions authorization", () => {
   it("downgrades an engineer to viewer without a new sign-in", async () => {
     const seeded = await seedQueue();
     asUser("engineer-1", "engineer@bookmax.ai");
-    await seeded.staffStore.upsert("engineer-1", "viewer");
+    await seeded.staffStore.upsert({
+      userId: "engineer-1",
+      role: "viewer",
+      status: "active",
+      provisionedBy: null,
+    });
     const { GET: listGet } = await import("@/app/api/implementation/submissions/route");
     const { PATCH } = await import("@/app/api/implementation/submissions/[id]/route");
     const { POST: reveal } = await import("@/app/api/implementation/submissions/[id]/credentials/route");

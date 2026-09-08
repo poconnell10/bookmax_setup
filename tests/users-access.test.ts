@@ -1,0 +1,401 @@
+import { NextRequest, NextResponse } from "next/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PENDING_EMAIL_COOKIE } from "@/lib/access/pending-email";
+import { landingPath, resolveAuthorization } from "@/lib/access/authorization";
+import { createMemoryIdentityStore } from "@/lib/implementation/access/identity-store";
+import { createMemoryAccessAuditStore } from "@/lib/implementation/access/memory-audit-store";
+import { setAccessSingletonsForTests } from "@/lib/implementation/access/runtime";
+import { createCustomerService } from "@/lib/implementation/customer/service";
+import { createMemoryCustomerStore } from "@/lib/implementation/customer/memory-store";
+import { setCustomerSingletonsForTests } from "@/lib/implementation/customer/runtime";
+import { createMemoryAuditStore } from "@/lib/implementation/internal/memory-audit-store";
+import { createMemoryQueueStore } from "@/lib/implementation/internal/memory-queue-store";
+import { createMemoryStaffStore } from "@/lib/implementation/internal/memory-staff-store";
+import { setInternalSingletonsForTests } from "@/lib/implementation/internal/runtime";
+import { createMemoryCredentialStore } from "@/lib/setup/credentials/memory-store";
+import { createCredentialService } from "@/lib/setup/credentials/service";
+import { setCredentialSingletonsForTests } from "@/lib/setup/credentials/runtime";
+import type { InternalRole, InternalStaff, StaffStatus } from "@/lib/implementation/internal/types";
+
+const SECRET = "users-access-secret-do-not-leak";
+const STAMP = "2026-09-08T12:00:00.000Z";
+const TEST_KEY = Buffer.alloc(32, 13).toString("base64");
+
+const authMocks = vi.hoisted(() => ({
+  getUser: vi.fn(),
+  verifyOtp: vi.fn(),
+  signOut: vi.fn(),
+}));
+
+vi.mock("@/lib/supabase/auth-clients", () => ({
+  createSupabaseRouteClient: () => ({
+    supabase: {
+      auth: {
+        getUser: authMocks.getUser,
+        verifyOtp: authMocks.verifyOtp,
+        signOut: authMocks.signOut,
+      },
+    },
+    attachAuthCookies: (response: NextResponse) => response,
+  }),
+  createSupabaseServerClient: async () => ({
+    auth: {
+      getUser: authMocks.getUser,
+    },
+  }),
+}));
+
+function staffOf(userId: string, role: InternalRole, status: StaffStatus = "active"): InternalStaff {
+  return {
+    userId,
+    role,
+    status,
+    createdAt: STAMP,
+    updatedAt: STAMP,
+    provisionedBy: null,
+  };
+}
+
+function asUser(id: string | null, email = "user@bookmax.ai") {
+  authMocks.getUser.mockResolvedValue({
+    data: { user: id ? { id, email } : null },
+    error: null,
+  });
+}
+
+async function seedWorld() {
+  process.env.CREDENTIAL_ENCRYPTION_KEY = TEST_KEY;
+  const identities = createMemoryIdentityStore([
+    { userId: "admin-1", email: "admin@bookmax.ai", lastSignInAt: STAMP, createdAt: STAMP },
+    { userId: "admin-2", email: "admin2@bookmax.ai", lastSignInAt: STAMP, createdAt: STAMP },
+    { userId: "engineer-1", email: "engineer@bookmax.ai", lastSignInAt: STAMP, createdAt: STAMP },
+    { userId: "viewer-1", email: "viewer@bookmax.ai", lastSignInAt: STAMP, createdAt: STAMP },
+    { userId: "customer-1", email: "priya@hotel.com", lastSignInAt: STAMP, createdAt: STAMP },
+    { userId: "pending-1", email: "new@hotel.com", lastSignInAt: STAMP, createdAt: STAMP },
+    { userId: "pending-2", email: "viewer-new@hotel.com", lastSignInAt: STAMP, createdAt: STAMP },
+    { userId: "pending-3", email: "cust-new@hotel.com", lastSignInAt: STAMP, createdAt: STAMP },
+    { userId: "disabled-1", email: "disabled@bookmax.ai", lastSignInAt: STAMP, createdAt: STAMP },
+    { userId: "both-1", email: "both@bookmax.ai", lastSignInAt: STAMP, createdAt: STAMP },
+  ]);
+  const staffStore = createMemoryStaffStore([
+    staffOf("admin-1", "admin"),
+    staffOf("admin-2", "admin"),
+    staffOf("engineer-1", "engineer"),
+    staffOf("viewer-1", "viewer"),
+    staffOf("disabled-1", "engineer", "disabled"),
+    staffOf("both-1", "engineer"),
+  ]);
+  const customers = createMemoryCustomerStore();
+  const customer = createCustomerService(customers);
+  await customer.ensureForUser("customer-1");
+  await customer.saveProperty("customer-1", {
+    name: "Hotel Northgate",
+    city: "Barcelona",
+    country: "Spain",
+    contactName: "Priya Raman",
+  });
+  await customer.ensureForUser("both-1");
+  const credentials = createMemoryCredentialStore();
+  const credentialService = createCredentialService(credentials, customer);
+  const queue = createMemoryQueueStore();
+  const audit = createMemoryAuditStore();
+  const accessAudit = createMemoryAccessAuditStore();
+
+  setCustomerSingletonsForTests({ store: customers, service: customer });
+  setCredentialSingletonsForTests({ store: credentials, service: credentialService });
+  setInternalSingletonsForTests({
+    staff: staffStore,
+    queue,
+    audit,
+    credentials,
+  });
+  setAccessSingletonsForTests({ identities, audit: accessAudit });
+
+  return { identities, staffStore, customers, customer, queue, credentials, credentialService, accessAudit };
+}
+
+async function verifyOtpFor(userId: string, email: string) {
+  authMocks.verifyOtp.mockResolvedValue({
+    data: { user: { id: userId, email }, session: { access_token: "a", refresh_token: "r" } },
+    error: null,
+  });
+  const { POST } = await import("@/app/api/access/otp/verify/route");
+  return POST(
+    new NextRequest("http://localhost:3000/api/access/otp/verify", {
+      method: "POST",
+      headers: {
+        cookie: `${PENDING_EMAIL_COOKIE}=${email}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ code: "123456" }),
+    }),
+  );
+}
+
+describe("Users & Access authorization", () => {
+  beforeEach(async () => {
+    authMocks.getUser.mockReset();
+    authMocks.verifyOtp.mockReset();
+    authMocks.signOut.mockReset();
+    authMocks.signOut.mockResolvedValue({ error: null });
+    await seedWorld();
+  });
+
+  afterEach(() => {
+    setCustomerSingletonsForTests({ store: null, service: null });
+    setCredentialSingletonsForTests({ store: null, service: null });
+    setInternalSingletonsForTests({
+      staff: null,
+      queue: null,
+      audit: null,
+      credentials: null,
+      service: null,
+    });
+    setAccessSingletonsForTests({ identities: null, audit: null, directory: null });
+  });
+
+  it("1. unauthenticated internal access is denied", async () => {
+    asUser(null);
+    const { GET: users } = await import("@/app/api/implementation/users/route");
+    const { GET: submissions } = await import("@/app/api/implementation/submissions/route");
+    expect((await users(new NextRequest("http://localhost:3000/api/implementation/users"))).status).toBe(401);
+    expect((await submissions(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(401);
+  });
+
+  it("2. unknown authenticated user is pending, not a customer", async () => {
+    const decision = await resolveAuthorization({ userId: "pending-1", email: "new@hotel.com" });
+    expect(decision.kind).toBe("pending");
+    expect(landingPath(decision)).toBe("/access/pending");
+    const response = await verifyOtpFor("pending-1", "new@hotel.com");
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.resumePath).toBe("/access/pending");
+    expect(body.implementation).toBeNull();
+  });
+
+  it("3. customer OTP resumes the customer setup path", async () => {
+    const response = await verifyOtpFor("customer-1", "priya@hotel.com");
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.resumePath).toBe("/setup/pms");
+    expect(body.implementation.id).toBeTruthy();
+  });
+
+  it("4. engineer OTP routes to submissions", async () => {
+    const response = await verifyOtpFor("engineer-1", "engineer@bookmax.ai");
+    const body = await response.json();
+    expect(body.resumePath).toBe("/implementation/submissions");
+  });
+
+  it("5. viewer OTP routes to submissions", async () => {
+    const response = await verifyOtpFor("viewer-1", "viewer@bookmax.ai");
+    const body = await response.json();
+    expect(body.resumePath).toBe("/implementation/submissions");
+  });
+
+  it("6. admin OTP routes to Users & Access", async () => {
+    const response = await verifyOtpFor("admin-1", "admin@bookmax.ai");
+    const body = await response.json();
+    expect(body.resumePath).toBe("/implementation/users");
+  });
+
+  it("7. disabled engineer is denied", async () => {
+    asUser("disabled-1", "disabled@bookmax.ai");
+    const { GET } = await import("@/app/api/implementation/submissions/route");
+    const { GET: users } = await import("@/app/api/implementation/users/route");
+    expect((await GET(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(403);
+    expect((await users(new NextRequest("http://localhost:3000/api/implementation/users"))).status).toBe(403);
+    const otp = await verifyOtpFor("disabled-1", "disabled@bookmax.ai");
+    expect((await otp.json()).resumePath).toBe("/access/denied");
+  });
+
+  it("8. internal membership wins over customer mapping", async () => {
+    const decision = await resolveAuthorization({ userId: "both-1", email: "both@bookmax.ai" });
+    expect(decision.kind).toBe("internal");
+    expect(landingPath(decision)).toBe("/implementation/submissions");
+    asUser("both-1", "both@bookmax.ai");
+    const { GET: submissions } = await import("@/app/api/implementation/submissions/route");
+    const { GET: setup } = await import("@/app/api/setup/context/route");
+    expect((await submissions(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(200);
+    expect((await setup(new NextRequest("http://localhost:3000/api/setup/context"))).status).toBe(403);
+  });
+
+  it("9-12. only a real admin can list users", async () => {
+    const { GET } = await import("@/app/api/implementation/users/route");
+    const request = (query = "") => new NextRequest(`http://localhost:3000/api/implementation/users${query}`);
+    asUser("customer-1", "priya@hotel.com");
+    expect((await GET(request("?role=admin"))).status).toBe(403);
+    asUser("engineer-1", "engineer@bookmax.ai");
+    expect((await GET(request("?user_id=admin-1"))).status).toBe(403);
+    asUser("viewer-1", "viewer@bookmax.ai");
+    expect((await GET(request())).status).toBe(403);
+    asUser("admin-1", "admin@bookmax.ai");
+    const allowed = await GET(request());
+    const body = await allowed.json();
+    expect(allowed.status).toBe(200);
+    expect(body.users.some((row: { userId: string }) => row.userId === "pending-1")).toBe(true);
+  });
+
+  it("13-15. admin can provision engineer, viewer, and customer", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { POST, GET } = await import("@/app/api/implementation/users/route");
+    const listed = await GET(new NextRequest("http://localhost:3000/api/implementation/users"));
+    const implementationId = (await listed.json()).implementations[0].id;
+
+    const engineer = await POST(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "POST",
+        body: JSON.stringify({ userId: "pending-1", accountType: "internal", role: "engineer" }),
+      }),
+    );
+    expect(engineer.status).toBe(200);
+    expect((await engineer.json()).user.role).toBe("engineer");
+
+    asUser("admin-1", "admin@bookmax.ai");
+    const viewer = await POST(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "POST",
+        body: JSON.stringify({ userId: "pending-2", accountType: "internal", role: "viewer" }),
+      }),
+    );
+    const customer = await POST(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "POST",
+        body: JSON.stringify({ userId: "pending-3", accountType: "customer", implementationId }),
+      }),
+    );
+    expect(viewer.status).toBe(200);
+    expect((await viewer.json()).user.role).toBe("viewer");
+    expect(customer.status).toBe(200);
+    expect((await customer.json()).user.accountType).toBe("customer");
+  });
+
+  it("16-18. admin can promote, disable, and reactivate", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const promoted = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: "viewer-1", action: "role", role: "admin" }),
+      }),
+    );
+    expect(promoted.status).toBe(200);
+    expect((await promoted.json()).user.role).toBe("admin");
+    const disabled = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: "engineer-1", action: "disable" }),
+      }),
+    );
+    expect(disabled.status).toBe(200);
+    expect((await disabled.json()).user.status).toBe("disabled");
+    const reactivated = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: "engineer-1", action: "reactivate" }),
+      }),
+    );
+    expect(reactivated.status).toBe(200);
+    expect((await reactivated.json()).user.status).toBe("active");
+  });
+
+  it("19-20. role and user_id spoofing cannot grant admin APIs", async () => {
+    asUser("engineer-1", "engineer@bookmax.ai");
+    const { GET, POST } = await import("@/app/api/implementation/users/route");
+    expect(
+      (
+        await GET(new NextRequest("http://localhost:3000/api/implementation/users?role=admin&user_id=admin-1"))
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await POST(
+          new NextRequest("http://localhost:3000/api/implementation/users?role=admin", {
+            method: "POST",
+            body: JSON.stringify({ userId: "pending-1", accountType: "internal", role: "admin" }),
+          }),
+        )
+      ).status,
+    ).toBe(403);
+  });
+
+  it("21. the last active Admin cannot be disabled or downgraded", async () => {
+    const staffStore = createMemoryStaffStore([staffOf("admin-1", "admin")]);
+    setInternalSingletonsForTests({ staff: staffStore });
+    setAccessSingletonsForTests({
+      identities: createMemoryIdentityStore([
+        { userId: "admin-1", email: "admin@bookmax.ai", lastSignInAt: STAMP, createdAt: STAMP },
+      ]),
+      audit: createMemoryAccessAuditStore(),
+    });
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const disabled = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: "admin-1", action: "disable" }),
+      }),
+    );
+    const downgraded = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: "admin-1", action: "role", role: "engineer" }),
+      }),
+    );
+    expect(disabled.status).toBe(403);
+    expect(downgraded.status).toBe(403);
+  });
+
+  it("22-25. submissions stay role-scoped", async () => {
+    asUser("engineer-1", "engineer@bookmax.ai");
+    const { GET } = await import("@/app/api/implementation/submissions/route");
+    expect((await GET(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(200);
+    asUser("viewer-1", "viewer@bookmax.ai");
+    expect((await GET(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(200);
+    asUser("customer-1", "priya@hotel.com");
+    expect((await GET(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(403);
+    asUser("pending-1", "new@hotel.com");
+    expect((await GET(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(403);
+  });
+
+  it("26. viewer cannot reveal credentials", async () => {
+    const world = await seedWorld();
+    asUser("customer-1", "priya@hotel.com");
+    await world.customer.savePmsSelection("customer-1", { pmsId: "mews", otherPmsName: "" });
+    await world.customer.saveConnectDetails("customer-1", { pmsAccessMethod: "api" });
+    await world.credentialService.submit("customer-1", {
+      clientId: "id-1",
+      clientSecret: SECRET,
+      applicationKey: "app-1",
+    });
+    const context = await world.customer.submitSetup("customer-1", "priya@hotel.com");
+    const row = await world.queue.insertFromCustomer!({
+      implementationId: context.implementation.id,
+      record: context.submission!.record,
+      submittedAt: context.submission!.submittedAt,
+    });
+    asUser("viewer-1", "viewer@bookmax.ai");
+    const { POST } = await import("@/app/api/implementation/submissions/[id]/credentials/route");
+    const opened = await POST(
+      new NextRequest(`http://localhost:3000/api/implementation/submissions/${row.id}/credentials`, {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: row.id }) },
+    );
+    expect(opened.status).toBe(403);
+    expect(JSON.stringify(await opened.json())).not.toContain(SECRET);
+  });
+
+  it("27-28. logout clears the session and denies protected routes", async () => {
+    asUser("engineer-1", "engineer@bookmax.ai");
+    const { POST } = await import("@/app/api/access/logout/route");
+    const loggedOut = await POST(new NextRequest("http://localhost:3000/api/access/logout", { method: "POST" }));
+    expect(loggedOut.status).toBe(200);
+    expect(authMocks.signOut).toHaveBeenCalledTimes(1);
+    asUser(null);
+    const { GET: users } = await import("@/app/api/implementation/users/route");
+    const { GET: submissions } = await import("@/app/api/implementation/submissions/route");
+    expect((await users(new NextRequest("http://localhost:3000/api/implementation/users"))).status).toBe(401);
+    expect((await submissions(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(401);
+  });
+});

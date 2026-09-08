@@ -33,6 +33,32 @@ export function createMemoryCustomerStore(): CustomerStore {
       return id ? (memberships.get(id) ?? null) : null;
     },
 
+    async listMemberships() {
+      return [...memberships.values()];
+    },
+
+    async listImplementations() {
+      return [...implementations.values()];
+    },
+
+    async updateMembership(userId, input) {
+      const id = membershipByUser.get(userId);
+      const current = id ? memberships.get(id) : null;
+      if (!current) {
+        throw new CustomerError("not_found", "Customer access was not found.");
+      }
+      if (input.implementationId && !implementations.has(input.implementationId)) {
+        throw new CustomerError("not_found", "Implementation was not found.");
+      }
+      const next: ImplementationMembership = {
+        ...current,
+        implementationId: input.implementationId ?? current.implementationId,
+        status: input.status ?? current.status,
+      };
+      memberships.set(current.id, next);
+      return next;
+    },
+
     async findImplementationById(id) {
       return implementations.get(id) ?? null;
     },
@@ -70,6 +96,7 @@ export function createMemoryCustomerStore(): CustomerStore {
         implementationId,
         userId,
         role: "customer",
+        status: "active",
         createdAt: nowIso(),
       };
       memberships.set(created.id, created);

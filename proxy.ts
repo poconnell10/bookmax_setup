@@ -23,7 +23,7 @@ const SETUP_PREFIXES = [
   "/setup/complete",
 ] as const;
 
-const INTERNAL_PREFIXES = ["/implementation/submissions", "/admin/submissions"] as const;
+const INTERNAL_PREFIXES = ["/implementation/submissions", "/implementation/users", "/admin/submissions"] as const;
 
 function matchesPrefix(pathname: string, prefixes: readonly string[]): boolean {
   return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
@@ -94,6 +94,8 @@ export const config = {
     "/setup/complete",
     "/implementation/submissions",
     "/implementation/submissions/:path*",
+    "/implementation/users",
+    "/implementation/users/:path*",
     "/admin/submissions",
     "/admin/submissions/:path*",
   ],

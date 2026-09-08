@@ -11,11 +11,15 @@ export type CustomerImplementation = {
   updatedAt: string;
 };
 
+export const MEMBERSHIP_STATUSES = ["active", "disabled"] as const;
+export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number];
+
 export type ImplementationMembership = {
   id: string;
   implementationId: string;
   userId: string;
   role: "customer";
+  status: MembershipStatus;
   createdAt: string;
 };
 

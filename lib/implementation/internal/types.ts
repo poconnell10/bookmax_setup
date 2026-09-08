@@ -1,8 +1,11 @@
 import type { SetupSubmissionRecord } from "@/lib/setup/intake";
 import type { CredentialLabel, SubmissionRecord, SubmissionStatus } from "@/types/implementation";
 
-export const INTERNAL_ROLES = ["viewer", "engineer"] as const;
+export const INTERNAL_ROLES = ["viewer", "engineer", "admin"] as const;
 export type InternalRole = (typeof INTERNAL_ROLES)[number];
+
+export const STAFF_STATUSES = ["active", "disabled"] as const;
+export type StaffStatus = (typeof STAFF_STATUSES)[number];
 
 export const INTERNAL_AUDIT_EVENTS = ["status_changed", "credential_opened"] as const;
 export type InternalAuditEventType = (typeof INTERNAL_AUDIT_EVENTS)[number];
@@ -10,7 +13,10 @@ export type InternalAuditEventType = (typeof INTERNAL_AUDIT_EVENTS)[number];
 export type InternalStaff = {
   userId: string;
   role: InternalRole;
+  status: StaffStatus;
   createdAt: string;
+  updatedAt: string;
+  provisionedBy: string | null;
 };
 
 export type InternalAuditEvent = {

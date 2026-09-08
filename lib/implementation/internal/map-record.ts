@@ -100,8 +100,8 @@ export function toInternalSubmissionView(
     ...mapped,
     credentials_received_at: receipt ? formatDisplayTime(receipt.receivedAt) : null,
     credential_type: received ? credentialTypeForIntake(record.intake) : null,
-    can_open_credentials: received && role === "engineer",
-    can_update_status: role === "engineer",
+    can_open_credentials: received && (role === "engineer" || role === "admin"),
+    can_update_status: role === "engineer" || role === "admin",
     audit_events: events.map((event) => ({
       eventType: event.eventType,
       actorUserId: event.actorUserId,

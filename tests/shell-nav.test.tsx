@@ -3,21 +3,20 @@ import { describe, expect, it } from "vitest";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { LoginScreen } from "@/components/account/LoginScreen";
 import { ActivateScreen } from "@/components/account/ActivateScreen";
-import { customerNavLabels, internalNavLabels } from "@/lib/navigation";
+import { customerNavLabels, engineerNavLabels, adminNavLabels } from "@/lib/navigation";
 
 describe("BookMax sidebar", () => {
   it("shows BookMax navigation without Traqra items or website account links", () => {
-    render(<Sidebar viewerKind="internal" />);
+    render(<Sidebar viewerKind="engineer" />);
 
     expect(screen.getByRole("navigation", { name: "BookMax" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Setup" })).toHaveAttribute(
-      "href",
-      "/implementation/property",
-    );
+    expect(screen.queryByRole("link", { name: "Setup" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Submissions" })).toHaveAttribute(
       "href",
       "/implementation/submissions",
     );
+    expect(screen.queryByRole("link", { name: "Users & Access" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Sign up / Activate" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Log in" })).not.toBeInTheDocument();
     expect(screen.queryByText("Thank You")).not.toBeInTheDocument();
@@ -31,7 +30,8 @@ describe("BookMax sidebar", () => {
 
   it("keeps customer and internal navigation distinct", () => {
     expect(customerNavLabels).toEqual(["Setup"]);
-    expect(internalNavLabels).toEqual(["Setup", "Submissions"]);
+    expect(engineerNavLabels).toEqual(["Submissions"]);
+    expect(adminNavLabels).toEqual(["Submissions", "Users & Access"]);
   });
 
   it("hides the internal submissions link from customers", () => {

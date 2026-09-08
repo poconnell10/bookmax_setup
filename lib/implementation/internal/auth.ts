@@ -1,23 +1,14 @@
 import { NextRequest } from "next/server";
 import { redirect } from "next/navigation";
-import { createSupabaseRouteClient, createSupabaseServerClient } from "@/lib/supabase/auth-clients";
-import { getStaffStore } from "@/lib/implementation/internal/runtime";
+import { resolveAuthorization } from "@/lib/access/authorization";
+import { getCustomerService } from "@/lib/implementation/customer/runtime";
 import { InternalError, type InternalStaff } from "@/lib/implementation/internal/types";
+import { createSupabaseRouteClient, createSupabaseServerClient } from "@/lib/supabase/auth-clients";
 import type { ViewerKind } from "@/lib/access/viewer";
 
 /**
- * Internal authorization is an explicit allow-list, not OTP and not email domain.
- *
- * Provision an engineer:
- * 1. The person signs in once through the existing OTP flow.
- * 2. Supabase Auth establishes auth.users.id.
- * 3. An administrator inserts that UUID into public.internal_staff (role = viewer | engineer).
- * 4. They authenticate again through OTP.
- * 5. The server requires a valid session AND a matching internal_staff.user_id.
- * 6. role determines queue, status, and credential-reveal permissions.
- *
- * Deprovision by deleting or changing that row. The next protected server request is denied
- * or downgraded immediately; authorization is never stored in the browser session.
+ * OTP authenticates identity. This module authorizes BookMax access from
+ * internal_staff.user_id, never email domain, query string, or client role.
  */
 
 export type InternalSession = InternalStaff & {
@@ -25,24 +16,26 @@ export type InternalSession = InternalStaff & {
   attachAuthCookies: (response: import("next/server").NextResponse) => import("next/server").NextResponse;
 };
 
-export async function requireInternalStaff(request: NextRequest): Promise<InternalSession> {
+async function sessionUser(request: NextRequest) {
   const { supabase, attachAuthCookies } = createSupabaseRouteClient(request);
   const {
     data: { user },
     error,
   } = await supabase.auth.getUser();
+  return { user: error ? null : user, attachAuthCookies };
+}
 
-  if (error || !user?.id) {
+export async function requireInternalStaff(request: NextRequest): Promise<InternalSession> {
+  const { user, attachAuthCookies } = await sessionUser(request);
+  if (!user?.id) {
     throw new InternalError("unauthenticated", "Sign in to continue.");
   }
-
-  const staff = await getStaffStore().findByUserId(user.id);
-  if (!staff) {
+  const decision = await resolveAuthorization({ userId: user.id, email: user.email });
+  if (decision.kind !== "internal") {
     throw new InternalError("forbidden", "You cannot access internal submissions.");
   }
-
   return {
-    ...staff,
+    ...decision.staff,
     email: user.email ?? "",
     attachAuthCookies,
   };
@@ -50,8 +43,16 @@ export async function requireInternalStaff(request: NextRequest): Promise<Intern
 
 export async function requireEngineer(request: NextRequest): Promise<InternalSession> {
   const staff = await requireInternalStaff(request);
-  if (staff.role !== "engineer") {
+  if (staff.role !== "engineer" && staff.role !== "admin") {
     throw new InternalError("forbidden", "You cannot open that internal workflow.");
+  }
+  return staff;
+}
+
+export async function requireAdmin(request: NextRequest): Promise<InternalSession> {
+  const staff = await requireInternalStaff(request);
+  if (staff.role !== "admin") {
+    throw new InternalError("forbidden", "You cannot manage Users & Access.");
   }
   return staff;
 }
@@ -62,35 +63,58 @@ export async function getInternalViewerKind(): Promise<ViewerKind> {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user?.id) {
+    const decision = await resolveAuthorization({ userId: user?.id, email: user?.email });
+    if (decision.kind === "internal") {
+      return decision.role;
+    }
+    if (decision.kind === "customer") {
       return "customer";
     }
-    const staff = await getStaffStore().findByUserId(user.id);
-    return staff ? "internal" : "customer";
+    return "pending";
   } catch {
-    return "customer";
+    return "pending";
   }
 }
 
-export async function requireInternalStaffPage(): Promise<InternalStaff> {
+async function currentDecision() {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user?.id) {
+  return resolveAuthorization({ userId: user?.id, email: user?.email });
+}
+
+export async function requireInternalStaffPage(): Promise<InternalStaff> {
+  const decision = await currentDecision();
+  if (decision.kind === "unauthenticated") {
     redirect("/access");
   }
-  const staff = await getStaffStore().findByUserId(user.id);
-  if (!staff) {
-    redirect("/setup/property");
+  if (decision.kind === "pending") {
+    redirect("/access/pending");
+  }
+  if (decision.kind === "disabled") {
+    redirect("/access/denied");
+  }
+  if (decision.kind === "customer") {
+    const service = getCustomerService();
+    const context = await service.getForUser(decision.userId);
+    redirect(service.resumePath(context));
+  }
+  return decision.staff;
+}
+
+export async function requireAdminPage(): Promise<InternalStaff> {
+  const staff = await requireInternalStaffPage();
+  if (staff.role !== "admin") {
+    redirect("/implementation/submissions");
   }
   return staff;
 }
 
 export async function requireEngineerPage(): Promise<InternalStaff> {
   const staff = await requireInternalStaffPage();
-  if (staff.role !== "engineer") {
-    redirect(`/implementation/submissions`);
+  if (staff.role !== "engineer" && staff.role !== "admin") {
+    redirect("/implementation/submissions");
   }
   return staff;
 }

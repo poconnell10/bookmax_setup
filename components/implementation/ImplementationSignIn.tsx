@@ -178,8 +178,7 @@ export function ImplementationSignIn({ invitation = null }: ImplementationSignIn
       <aside className="brandside">
         <div className="bmark">
           <BrandMark />
-          <span className="wm">traqra</span>
-          <span className="pd">BookMax</span>
+          <span className="wm">BookMax</span>
         </div>
         <div className="bpitch">
           <h2>Your BookMax implementation, in five steps.</h2>
@@ -209,9 +208,7 @@ export function ImplementationSignIn({ invitation = null }: ImplementationSignIn
         <div className="shell">
           <div className="mobmark">
             <BrandMark />
-            <span className="wm">
-              traqra <span style={{ color: "var(--mut-2)", fontWeight: 500 }}>BookMax</span>
-            </span>
+            <span className="wm">BookMax</span>
           </div>
           <section className="view on">
             <h1>Sign in to continue</h1>

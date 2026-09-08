@@ -25,6 +25,7 @@ type MembershipRow = {
   implementation_id: string;
   user_id: string;
   role: string;
+  status: string | null;
   created_at: string;
 };
 
@@ -81,6 +82,7 @@ function mapMembership(row: MembershipRow): ImplementationMembership {
     implementationId: row.implementation_id,
     userId: row.user_id,
     role: "customer",
+    status: row.status === "disabled" ? "disabled" : "active",
     createdAt: row.created_at,
   };
 }
@@ -131,13 +133,51 @@ export function createSupabaseCustomerStore(client: SupabaseClient): CustomerSto
     async findMembershipByUserId(userId) {
       const { data, error } = await client
         .from("implementation_users")
-        .select("id, implementation_id, user_id, role, created_at")
+        .select("id, implementation_id, user_id, role, status, created_at")
         .eq("user_id", userId)
         .maybeSingle();
       if (error) {
         throwStoreError(error);
       }
       return data ? mapMembership(data as MembershipRow) : null;
+    },
+
+    async listMemberships() {
+      const { data, error } = await client
+        .from("implementation_users")
+        .select("id, implementation_id, user_id, role, status, created_at");
+      if (error) {
+        throwStoreError(error);
+      }
+      return ((data ?? []) as MembershipRow[]).map(mapMembership);
+    },
+
+    async listImplementations() {
+      const { data, error } = await client.from("implementations").select("id, status, created_at, updated_at");
+      if (error) {
+        throwStoreError(error);
+      }
+      return ((data ?? []) as ImplementationRow[]).map(mapImplementation);
+    },
+
+    async updateMembership(userId, input) {
+      const patch: Record<string, string> = {};
+      if (input.implementationId) {
+        patch.implementation_id = input.implementationId;
+      }
+      if (input.status) {
+        patch.status = input.status;
+      }
+      const { data, error } = await client
+        .from("implementation_users")
+        .update(patch)
+        .eq("user_id", userId)
+        .select("id, implementation_id, user_id, role, status, created_at")
+        .single();
+      if (error || !data) {
+        throwStoreError(error);
+      }
+      return mapMembership(data as MembershipRow);
     },
 
     async findImplementationById(id) {
@@ -200,7 +240,7 @@ export function createSupabaseCustomerStore(client: SupabaseClient): CustomerSto
           user_id: userId,
           role: "customer",
         })
-        .select("id, implementation_id, user_id, role, created_at")
+        .select("id, implementation_id, user_id, role, status, created_at")
         .single();
       if (error || !data) {
         throwStoreError(error);
