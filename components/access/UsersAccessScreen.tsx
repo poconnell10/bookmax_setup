@@ -617,19 +617,28 @@ export function UsersAccessScreen({
             </div>
             <div className="dft">
               {mode === "provision" ? (
-                <>
-                  <span className="count">{accountType ? "" : "Choose an account type"}</span>
-                  <div className="r">
-                    <button type="button" className="btn" onClick={closeDrawer}>
-                      {selected ? "Cancel" : "Close"}
-                    </button>
-                    {selected ? (
+                selected ? (
+                  <>
+                    <span className="count">{accountType ? "" : "Choose an account type"}</span>
+                    <div className="r">
+                      <button type="button" className="btn" onClick={closeDrawer}>
+                        Cancel
+                      </button>
                       <button type="button" className="btn pri" disabled={busy || !provisionReady} onClick={() => void provision()}>
                         Grant access
                       </button>
-                    ) : null}
-                  </div>
-                </>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span className="count">Pending: {counts.pending}</span>
+                    <div className="r">
+                      <button type="button" className="btn" onClick={closeDrawer}>
+                        Close
+                      </button>
+                    </div>
+                  </>
+                )
               ) : confirm && selected ? (
                 <>
                   <span />

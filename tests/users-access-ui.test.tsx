@@ -99,4 +99,18 @@ describe("Users & Access HTML fidelity", () => {
     expect(screen.getByText("A member of the implementation team.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Grant access" })).toBeDisabled();
   });
+
+  it("shows the HTML empty provision state when nobody is pending", async () => {
+    render(
+      <UsersAccessScreen
+        initialUsers={users.filter((row) => row.status !== "pending")}
+        initialImplementations={[]}
+      />,
+    );
+    screen.getByRole("button", { name: "Provision user" }).click();
+    expect(await screen.findByRole("complementary", { name: "Provision user" })).toBeInTheDocument();
+    expect(screen.getByText(/Nobody is waiting to be provisioned/)).toBeInTheDocument();
+    expect(screen.getByText("Pending: 0")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Grant access" })).not.toBeInTheDocument();
+  });
 });
