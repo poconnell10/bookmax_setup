@@ -304,6 +304,9 @@ export function createAccessDirectoryService(deps: {
           status: "active",
           provisionedBy: actor.userId,
         });
+        if (membership) {
+          await deps.customers.updateMembership(userId, { status: "disabled" });
+        }
         await deps.audit.insert({
           eventType: "ACCOUNT_TYPE_CHANGED",
           actorUserId: actor.userId,

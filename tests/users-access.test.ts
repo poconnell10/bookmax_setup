@@ -407,7 +407,8 @@ describe("Users & Access authorization", () => {
     expect(body.user.status).toBe("active");
 
     const membership = await world.customers.findMembershipByUserId("gauge-1");
-    expect(membership?.status).toBe("active");
+    expect(membership?.status).toBe("disabled");
+    expect(membership?.implementationId).toBeTruthy();
 
     const decision = await resolveAuthorization({
       userId: "gauge-1",
@@ -428,6 +429,44 @@ describe("Users & Access authorization", () => {
     expect((await setup(new NextRequest("http://localhost:3000/api/setup/context"))).status).toBe(403);
   });
 
+  it("admin can convert an active frontlinepg.com customer to Internal / Engineer", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const converted = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({
+          userId: "fpg-customer",
+          action: "accountType",
+          accountType: "internal",
+          role: "engineer",
+        }),
+      }),
+    );
+    expect(converted.status).toBe(200);
+    const body = await converted.json();
+    expect(body.user.accountType).toBe("internal");
+    expect(body.user.role).toBe("engineer");
+    expect(body.user.status).toBe("active");
+
+    const membership = await world.customers.findMembershipByUserId("fpg-customer");
+    expect(membership?.status).toBe("disabled");
+    expect(membership?.implementationId).toBeTruthy();
+
+    const decision = await resolveAuthorization({
+      userId: "fpg-customer",
+      email: "alex@frontlinepg.com",
+    });
+    expect(decision.kind).toBe("internal");
+    expect(landingPath(decision)).toBe("/implementation/submissions");
+
+    asUser("fpg-customer", "alex@frontlinepg.com");
+    const { GET: submissions } = await import("@/app/api/implementation/submissions/route");
+    const { GET: users } = await import("@/app/api/implementation/users/route");
+    expect((await submissions(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(200);
+    expect((await users(new NextRequest("http://localhost:3000/api/implementation/users"))).status).toBe(403);
+  });
+
   it("admin can convert an eligible customer to Internal / Admin", async () => {
     asUser("admin-1", "admin@bookmax.ai");
     const { PATCH } = await import("@/app/api/implementation/users/route");
@@ -443,7 +482,15 @@ describe("Users & Access authorization", () => {
       }),
     );
     expect(converted.status).toBe(200);
-    expect((await converted.json()).user.role).toBe("admin");
+    const body = await converted.json();
+    expect(body.user.accountType).toBe("internal");
+    expect(body.user.role).toBe("admin");
+    expect(body.user.status).toBe("active");
+
+    const membership = await world.customers.findMembershipByUserId("gauge-1");
+    expect(membership?.status).toBe("disabled");
+    expect(membership?.implementationId).toBeTruthy();
+
     const decision = await resolveAuthorization({
       userId: "gauge-1",
       email: "asena@in-gauge.io",
