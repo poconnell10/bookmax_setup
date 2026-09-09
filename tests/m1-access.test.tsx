@@ -5,6 +5,7 @@ import { EmailAccessScreen } from "@/components/access/EmailAccessScreen";
 import { OtpDigitInputs } from "@/components/access/OtpDigitInputs";
 import { OtpVerifyScreen } from "@/components/access/OtpVerifyScreen";
 import { EMAIL_VALIDATION_ERROR, isValidEmail, maskEmail, parseWorkEmail } from "@/lib/access/email";
+import { isInternalEligibleEmail } from "@/lib/access/internal-eligibility";
 import { normalizeOtp } from "@/lib/access/otp";
 
 function stubAccessApis(options?: {
@@ -80,6 +81,14 @@ describe("M1 email helpers", () => {
   it("masks email without exposing the full address", () => {
     expect(maskEmail("john@hotel.com")).toBe("j••••@hotel.com");
     expect(maskEmail("john@hotel.com")).not.toContain("john@");
+  });
+
+  it("treats frontlinepg.com and in-gauge.io as Internal-eligible, case-insensitively", () => {
+    expect(isInternalEligibleEmail("nshaw@frontlinepg.com")).toBe(true);
+    expect(isInternalEligibleEmail("asena@in-gauge.io")).toBe(true);
+    expect(isInternalEligibleEmail("Andy@IN-GAUGE.IO")).toBe(true);
+    expect(isInternalEligibleEmail("priya@hotel.com")).toBe(false);
+    expect(isInternalEligibleEmail("qa@yopmail.com")).toBe(false);
   });
 });
 

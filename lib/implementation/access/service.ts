@@ -1,4 +1,5 @@
 import { maskEmail } from "@/lib/access/email";
+import { isInternalEligibleEmail } from "@/lib/access/internal-eligibility";
 import { canAdministerUsers } from "@/lib/access/capabilities";
 import type { AccessAuditStore } from "@/lib/implementation/access/audit-store";
 import type { IdentityStore } from "@/lib/implementation/access/identity-store";
@@ -8,6 +9,7 @@ import type {
   AccessUserView,
   ImplementationOption,
 } from "@/lib/implementation/access/types";
+import type { AccessTransitionStore } from "@/lib/implementation/access/transition-store";
 import type { CustomerStore } from "@/lib/implementation/customer/store";
 import type { InternalStaffStore } from "@/lib/implementation/internal/staff-store";
 import { InternalError, type InternalRole, type InternalStaff } from "@/lib/implementation/internal/types";
@@ -22,11 +24,22 @@ export type ManageInput =
   | { action: "role"; role: InternalRole }
   | { action: "disable" }
   | { action: "reactivate" }
-  | { action: "assign"; implementationId: string };
+  | { action: "assign"; implementationId: string }
+  | { action: "accountType"; accountType: "internal"; role: InternalRole }
+  | { action: "accountType"; accountType: "customer"; implementationId: string };
 
 function assertAdmin(actor: Actor) {
   if (!canAdministerUsers(actor.role) || actor.status !== "active") {
     throw new InternalError("forbidden", "You cannot manage Users & Access.");
+  }
+}
+
+function assertInternalEligible(email: string) {
+  if (!isInternalEligibleEmail(email)) {
+    throw new InternalError(
+      "invalid_input",
+      "Internal access can only be granted to frontlinepg.com or in-gauge.io identities.",
+    );
   }
 }
 
@@ -35,6 +48,7 @@ export function createAccessDirectoryService(deps: {
   staff: InternalStaffStore;
   customers: CustomerStore;
   audit: AccessAuditStore;
+  transitions: AccessTransitionStore;
 }) {
   async function implementationName(id: string | null): Promise<string | null> {
     if (!id) {
@@ -135,6 +149,7 @@ export function createAccessDirectoryService(deps: {
     }
 
     if (input.accountType === "internal") {
+      assertInternalEligible(identity.email);
       const staff = await deps.staff.upsert({
         userId: input.userId,
         role: input.role,
@@ -224,47 +239,55 @@ export function createAccessDirectoryService(deps: {
           throw new InternalError("forbidden", "The last active Admin cannot be disabled.");
         }
       }
-      if (staff) {
-        await deps.staff.upsert({
-          userId,
-          role: staff.role,
-          status: "disabled",
-          provisionedBy: actor.userId,
-        });
-      } else if (membership) {
-        await deps.customers.updateMembership(userId, { status: "disabled" });
-      } else {
+      if (!staff && !membership) {
         throw new InternalError("invalid_input", "This user has no access to disable.");
       }
-      await deps.audit.insert({
-        eventType: "ACCESS_DISABLED",
-        actorUserId: actor.userId,
-        targetUserId: userId,
-        previousState: { status: "active", role: staff?.role ?? "customer" },
-        newState: { status: "disabled" },
-      });
+      await deps.transitions.disable({ actorUserId: actor.userId, targetUserId: userId });
       return toView(identity);
     }
 
     if (input.action === "reactivate") {
-      if (staff) {
-        await deps.staff.upsert({
-          userId,
-          role: staff.role,
-          status: "active",
-          provisionedBy: actor.userId,
-        });
-      } else if (membership) {
-        await deps.customers.updateMembership(userId, { status: "active" });
-      } else {
+      if (!staff && !membership) {
         throw new InternalError("invalid_input", "This user has no access to reactivate.");
       }
-      await deps.audit.insert({
-        eventType: "ACCESS_REACTIVATED",
+      await deps.transitions.reactivate({ actorUserId: actor.userId, targetUserId: userId });
+      return toView(identity);
+    }
+
+    if (input.action === "accountType") {
+      // The previous/new state snapshot is captured inside the transition so it
+      // is written by the same statement as the membership change.
+      if (input.accountType === "internal") {
+        assertInternalEligible(identity.email);
+        if (staff?.role === "admin" && staff.status === "active" && input.role !== "admin") {
+          const remaining = await deps.staff.countActiveAdmins(userId);
+          if (remaining === 0) {
+            throw new InternalError("forbidden", "The last active Admin cannot be changed.");
+          }
+        }
+        await deps.transitions.changeAccountType({
+          actorUserId: actor.userId,
+          targetUserId: userId,
+          accountType: "internal",
+          role: input.role,
+        });
+        return toView(identity);
+      }
+
+      if (staff?.role === "admin" && staff.status === "active") {
+        const remaining = await deps.staff.countActiveAdmins(userId);
+        if (remaining === 0) {
+          throw new InternalError("forbidden", "The last active Admin cannot be changed.");
+        }
+      }
+      if (!input.implementationId) {
+        throw new InternalError("invalid_input", "Customer access requires an implementation.");
+      }
+      await deps.transitions.changeAccountType({
         actorUserId: actor.userId,
         targetUserId: userId,
-        previousState: { status: "disabled" },
-        newState: { status: "active", role: staff?.role ?? "customer" },
+        accountType: "customer",
+        implementationId: input.implementationId,
       });
       return toView(identity);
     }
