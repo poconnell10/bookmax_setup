@@ -157,12 +157,14 @@ async function verifyOtpFor(userId: string, email: string) {
 }
 
 describe("Users & Access authorization", () => {
+  let world: Awaited<ReturnType<typeof seedWorld>>;
+
   beforeEach(async () => {
     authMocks.getUser.mockReset();
     authMocks.verifyOtp.mockReset();
     authMocks.signOut.mockReset();
     authMocks.signOut.mockResolvedValue({ error: null });
-    await seedWorld();
+    world = await seedWorld();
   });
 
   afterEach(() => {
@@ -403,6 +405,9 @@ describe("Users & Access authorization", () => {
     expect(body.user.accountType).toBe("internal");
     expect(body.user.role).toBe("engineer");
     expect(body.user.status).toBe("active");
+
+    const membership = await world.customers.findMembershipByUserId("gauge-1");
+    expect(membership?.status).toBe("active");
 
     const decision = await resolveAuthorization({
       userId: "gauge-1",
