@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { TraqraSelect } from "@/components/setup/TraqraSelect";
+import { isInternalEligibleEmail } from "@/lib/access/internal-eligibility";
 import type { AccessAuditView, AccessUserView, ImplementationOption } from "@/lib/implementation/access/types";
 import type { InternalRole } from "@/lib/implementation/internal/types";
 
@@ -607,6 +608,7 @@ export function UsersAccessScreen({
                   implementationId={implementationId}
                   implementations={implementations}
                   pendingCount={counts.pending}
+                  internalEligible={Boolean(selected && isInternalEligibleEmail(selected.email))}
                   onAccountType={(value) => {
                     setAccountType(value);
                     setRole(null);
@@ -741,6 +743,7 @@ function ProvisionBody({
   implementationId,
   implementations,
   pendingCount,
+  internalEligible,
   onAccountType,
   onRole,
   onImplementation,
@@ -751,6 +754,7 @@ function ProvisionBody({
   implementationId: string;
   implementations: ImplementationOption[];
   pendingCount: number;
+  internalEligible: boolean;
   onAccountType: (value: "internal" | "customer") => void;
   onRole: (value: InternalRole) => void;
   onImplementation: (value: string) => void;
@@ -783,19 +787,21 @@ function ProvisionBody({
             <span className="od">Can complete their own BookMax Setup and nothing else.</span>
           </span>
         </button>
-        <button
-          type="button"
-          className={`opt${accountType === "internal" ? " on" : ""}`}
-          onClick={() => onAccountType("internal")}
-        >
-          <span className="rd" />
-          <span>
-            <span className="ol">Internal</span>
-            <span className="od">A member of the implementation team.</span>
-          </span>
-        </button>
+        {internalEligible ? (
+          <button
+            type="button"
+            className={`opt${accountType === "internal" ? " on" : ""}`}
+            onClick={() => onAccountType("internal")}
+          >
+            <span className="rd" />
+            <span>
+              <span className="ol">Internal</span>
+              <span className="od">A member of the implementation team.</span>
+            </span>
+          </button>
+        ) : null}
       </div>
-      {accountType === "internal" ? (
+      {accountType === "internal" && internalEligible ? (
         <>
           <div className="sq">Role</div>
           <div className="opts">
@@ -880,6 +886,7 @@ function ManageBody({
   const def = user.role ? ROLEDEF[user.role] : null;
   const internal = user.accountType === "internal" && user.status === "active";
   const customer = user.accountType === "customer" && user.status === "active";
+  const internalEligible = isInternalEligibleEmail(user.email);
   const status = statusBadge(user.status);
 
   return (
@@ -906,7 +913,7 @@ function ManageBody({
           </span>
         </div>
       ) : null}
-      {customer ? (
+      {customer && internalEligible ? (
         <>
           <div className="sq">Change account type</div>
           <div className="opts">

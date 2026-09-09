@@ -1,4 +1,5 @@
 import { maskEmail } from "@/lib/access/email";
+import { isInternalEligibleEmail } from "@/lib/access/internal-eligibility";
 import { canAdministerUsers } from "@/lib/access/capabilities";
 import type { AccessAuditStore } from "@/lib/implementation/access/audit-store";
 import type { IdentityStore } from "@/lib/implementation/access/identity-store";
@@ -29,6 +30,15 @@ export type ManageInput =
 function assertAdmin(actor: Actor) {
   if (!canAdministerUsers(actor.role) || actor.status !== "active") {
     throw new InternalError("forbidden", "You cannot manage Users & Access.");
+  }
+}
+
+function assertInternalEligible(email: string) {
+  if (!isInternalEligibleEmail(email)) {
+    throw new InternalError(
+      "invalid_input",
+      "Internal access can only be granted to frontlinepg.com or in-gauge.io identities.",
+    );
   }
 }
 
@@ -137,6 +147,7 @@ export function createAccessDirectoryService(deps: {
     }
 
     if (input.accountType === "internal") {
+      assertInternalEligible(identity.email);
       const staff = await deps.staff.upsert({
         userId: input.userId,
         role: input.role,
@@ -280,6 +291,7 @@ export function createAccessDirectoryService(deps: {
       };
 
       if (input.accountType === "internal") {
+        assertInternalEligible(identity.email);
         if (staff?.role === "admin" && staff.status === "active" && input.role !== "admin") {
           const remaining = await deps.staff.countActiveAdmins(userId);
           if (remaining === 0) {
