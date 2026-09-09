@@ -4,12 +4,18 @@ import { createSupabaseAccessAuditStore } from "@/lib/implementation/access/supa
 import { createMemoryIdentityStore, type IdentityStore } from "@/lib/implementation/access/identity-store";
 import { createSupabaseIdentityStore } from "@/lib/implementation/access/supabase-identity-store";
 import type { AccessAuditStore } from "@/lib/implementation/access/audit-store";
+import {
+  createMemoryTransitionStore,
+  type AccessTransitionStore,
+} from "@/lib/implementation/access/transition-store";
+import { createSupabaseTransitionStore } from "@/lib/implementation/access/supabase-transition-store";
 import { getCustomerStore } from "@/lib/implementation/customer/runtime";
 import { getStaffStore } from "@/lib/implementation/internal/runtime";
 import { createServiceClient } from "@/lib/supabase/service";
 
 let identitySingleton: IdentityStore | null = null;
 let accessAuditSingleton: AccessAuditStore | null = null;
+let transitionSingleton: AccessTransitionStore | null = null;
 let directorySingleton: AccessDirectoryService | null = null;
 
 export function getIdentityStore(): IdentityStore {
@@ -26,6 +32,13 @@ export function getAccessAuditStore(): AccessAuditStore {
   return accessAuditSingleton;
 }
 
+export function getAccessTransitionStore(): AccessTransitionStore {
+  if (!transitionSingleton) {
+    transitionSingleton = createSupabaseTransitionStore(createServiceClient());
+  }
+  return transitionSingleton;
+}
+
 export function getAccessDirectoryService(): AccessDirectoryService {
   if (!directorySingleton) {
     directorySingleton = createAccessDirectoryService({
@@ -33,6 +46,7 @@ export function getAccessDirectoryService(): AccessDirectoryService {
       staff: getStaffStore(),
       customers: getCustomerStore(),
       audit: getAccessAuditStore(),
+      transitions: getAccessTransitionStore(),
     });
   }
   return directorySingleton;
@@ -41,6 +55,7 @@ export function getAccessDirectoryService(): AccessDirectoryService {
 export function setAccessSingletonsForTests(input: {
   identities?: IdentityStore | null;
   audit?: AccessAuditStore | null;
+  transitions?: AccessTransitionStore | null;
   directory?: AccessDirectoryService | null;
 }) {
   if ("identities" in input) {
@@ -49,6 +64,9 @@ export function setAccessSingletonsForTests(input: {
   if ("audit" in input) {
     accessAuditSingleton = input.audit ?? null;
   }
+  if ("transitions" in input) {
+    transitionSingleton = input.transitions ?? null;
+  }
   if ("directory" in input) {
     directorySingleton = input.directory ?? null;
   } else {
@@ -56,4 +74,4 @@ export function setAccessSingletonsForTests(input: {
   }
 }
 
-export { createMemoryAccessAuditStore, createMemoryIdentityStore };
+export { createMemoryAccessAuditStore, createMemoryIdentityStore, createMemoryTransitionStore };

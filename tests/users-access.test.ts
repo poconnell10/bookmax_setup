@@ -5,6 +5,10 @@ import { landingPath, resolveAuthorization } from "@/lib/access/authorization";
 import { createMemoryIdentityStore } from "@/lib/implementation/access/identity-store";
 import { createMemoryAccessAuditStore } from "@/lib/implementation/access/memory-audit-store";
 import { setAccessSingletonsForTests } from "@/lib/implementation/access/runtime";
+import {
+  createMemoryTransitionStore,
+  type TransitionStage,
+} from "@/lib/implementation/access/transition-store";
 import { createCustomerService } from "@/lib/implementation/customer/service";
 import { createMemoryCustomerStore } from "@/lib/implementation/customer/memory-store";
 import { setCustomerSingletonsForTests } from "@/lib/implementation/customer/runtime";
@@ -124,6 +128,13 @@ async function seedWorld() {
   const queue = createMemoryQueueStore();
   const audit = createMemoryAuditStore();
   const accessAudit = createMemoryAccessAuditStore();
+  const failAt: { stage: TransitionStage | null } = { stage: null };
+  const transitions = createMemoryTransitionStore({
+    staff: staffStore,
+    customers,
+    audit: accessAudit,
+    failAt: () => failAt.stage,
+  });
 
   setCustomerSingletonsForTests({ store: customers, service: customer });
   setCredentialSingletonsForTests({ store: credentials, service: credentialService });
@@ -133,9 +144,19 @@ async function seedWorld() {
     audit,
     credentials,
   });
-  setAccessSingletonsForTests({ identities, audit: accessAudit });
+  setAccessSingletonsForTests({ identities, audit: accessAudit, transitions });
 
-  return { identities, staffStore, customers, customer, queue, credentials, credentialService, accessAudit };
+  return {
+    identities,
+    staffStore,
+    customers,
+    customer,
+    queue,
+    credentials,
+    credentialService,
+    accessAudit,
+    failAt,
+  };
 }
 
 async function verifyOtpFor(userId: string, email: string) {
@@ -177,7 +198,7 @@ describe("Users & Access authorization", () => {
       credentials: null,
       service: null,
     });
-    setAccessSingletonsForTests({ identities: null, audit: null, directory: null });
+    setAccessSingletonsForTests({ identities: null, audit: null, transitions: null, directory: null });
   });
 
   it("1. unauthenticated internal access is denied", async () => {
@@ -496,6 +517,165 @@ describe("Users & Access authorization", () => {
       email: "asena@in-gauge.io",
     });
     expect(landingPath(decision)).toBe("/implementation/users");
+  });
+
+  it.each(["staff", "membership", "audit"] as const)(
+    "a conversion failure at the %s stage leaves the Customer authorization intact",
+    async (stage) => {
+      world.failAt.stage = stage;
+      asUser("admin-1", "admin@bookmax.ai");
+      const { PATCH } = await import("@/app/api/implementation/users/route");
+      const attempted = await PATCH(
+        new NextRequest("http://localhost:3000/api/implementation/users", {
+          method: "PATCH",
+          body: JSON.stringify({
+            userId: "gauge-1",
+            action: "accountType",
+            accountType: "internal",
+            role: "engineer",
+          }),
+        }),
+      );
+      expect(attempted.status).toBe(503);
+      expect((await attempted.json()).ok).toBeFalsy();
+
+      // Nothing may persist: no internal authorization, customer still active,
+      // no governance record.
+      expect(await world.staffStore.findByUserId("gauge-1")).toBeNull();
+      const membership = await world.customers.findMembershipByUserId("gauge-1");
+      expect(membership?.status).toBe("active");
+      expect(membership?.implementationId).toBeTruthy();
+      const events = await world.accessAudit.listByTarget("gauge-1");
+      expect(events.some((event) => event.eventType === "ACCOUNT_TYPE_CHANGED")).toBe(false);
+
+      // The identity is still routed as a Customer.
+      const decision = await resolveAuthorization({ userId: "gauge-1", email: "asena@in-gauge.io" });
+      expect(decision.kind).toBe("customer");
+      expect(landingPath(decision)).toBe("/setup/property");
+    },
+  );
+
+  it("a reverse conversion failure leaves the Internal authorization intact", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { GET, PATCH } = await import("@/app/api/implementation/users/route");
+    const listed = await GET(new NextRequest("http://localhost:3000/api/implementation/users"));
+    const implementationId = (await listed.json()).implementations[0].id;
+
+    world.failAt.stage = "audit";
+    const attempted = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({
+          userId: "engineer-1",
+          action: "accountType",
+          accountType: "customer",
+          implementationId,
+        }),
+      }),
+    );
+    expect(attempted.status).toBe(503);
+
+    const staff = await world.staffStore.findByUserId("engineer-1");
+    expect(staff?.role).toBe("engineer");
+    expect(staff?.status).toBe("active");
+    expect(await world.customers.findMembershipByUserId("engineer-1")).toBeNull();
+    const events = await world.accessAudit.listByTarget("engineer-1");
+    expect(events.some((event) => event.eventType === "ACCOUNT_TYPE_CHANGED")).toBe(false);
+  });
+
+  it("never leaves both Customer and Internal authorization active after a conversion", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    for (const role of ["engineer", "admin"] as const) {
+      const converted = await PATCH(
+        new NextRequest("http://localhost:3000/api/implementation/users", {
+          method: "PATCH",
+          body: JSON.stringify({
+            userId: "gauge-1",
+            action: "accountType",
+            accountType: "internal",
+            role,
+          }),
+        }),
+      );
+      expect(converted.status).toBe(200);
+      const staff = await world.staffStore.findByUserId("gauge-1");
+      const membership = await world.customers.findMembershipByUserId("gauge-1");
+      const staffActive = staff?.status === "active";
+      const customerActive = membership?.status === "active";
+      expect(staffActive).toBe(true);
+      expect(customerActive).toBe(false);
+      expect(staffActive && customerActive).toBe(false);
+    }
+  });
+
+  it("performs a conversion as a single transition, not a sequence of writes", async () => {
+    const calls: unknown[] = [];
+    setAccessSingletonsForTests({
+      transitions: {
+        async changeAccountType(input) {
+          calls.push(input);
+        },
+      },
+    });
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const converted = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({
+          userId: "gauge-1",
+          action: "accountType",
+          accountType: "internal",
+          role: "engineer",
+        }),
+      }),
+    );
+    expect(converted.status).toBe(200);
+    expect(calls).toEqual([
+      {
+        actorUserId: "admin-1",
+        targetUserId: "gauge-1",
+        accountType: "internal",
+        role: "engineer",
+      },
+    ]);
+    // The service delegated the whole transition; it wrote nothing itself.
+    expect(await world.staffStore.findByUserId("gauge-1")).toBeNull();
+    const events = await world.accessAudit.listByTarget("gauge-1");
+    expect(events.some((event) => event.eventType === "ACCOUNT_TYPE_CHANGED")).toBe(false);
+  });
+
+  it("rejects a non-Admin attempting a conversion", async () => {
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const body = JSON.stringify({
+      userId: "gauge-1",
+      action: "accountType",
+      accountType: "internal",
+      role: "admin",
+    });
+
+    asUser("gauge-1", "asena@in-gauge.io");
+    const selfPromote = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", { method: "PATCH", body }),
+    );
+    expect(selfPromote.status).toBe(403);
+
+    asUser("engineer-1", "engineer@bookmax.ai");
+    const byEngineer = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", { method: "PATCH", body }),
+    );
+    expect(byEngineer.status).toBe(403);
+
+    asUser("viewer-1", "viewer@bookmax.ai");
+    const byViewer = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", { method: "PATCH", body }),
+    );
+    expect(byViewer.status).toBe(403);
+
+    expect(await world.staffStore.findByUserId("gauge-1")).toBeNull();
+    const membership = await world.customers.findMembershipByUserId("gauge-1");
+    expect(membership?.status).toBe("active");
   });
 
   it("admin can convert Internal / Engineer back to Customer with an implementation", async () => {
