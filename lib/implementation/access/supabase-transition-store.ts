@@ -10,6 +10,20 @@ import { InternalError } from "@/lib/implementation/internal/types";
  * ACCOUNT_TYPE_CHANGED audit insert, rolls the entire transition back, so the
  * original authorization state survives.
  */
+function raise(error: { message?: string } | null): never {
+  const message = error?.message ?? "";
+  if (message.includes("forbidden:") || message.toLowerCase().includes("last active admin")) {
+    throw new InternalError("forbidden", "That access change is not permitted.");
+  }
+  if (message.includes("not_found:")) {
+    throw new InternalError("not_found", "That record was not found.");
+  }
+  if (message.includes("invalid_input:")) {
+    throw new InternalError("invalid_input", "That access change is not supported.");
+  }
+  throw new InternalError("unavailable", "The service is temporarily unavailable. Please try again.");
+}
+
 export function createSupabaseTransitionStore(client: SupabaseClient): AccessTransitionStore {
   return {
     async changeAccountType(input) {
@@ -20,21 +34,29 @@ export function createSupabaseTransitionStore(client: SupabaseClient): AccessTra
         p_role: input.accountType === "internal" ? input.role : null,
         p_implementation_id: input.accountType === "customer" ? input.implementationId : null,
       });
-      if (!error) {
-        return;
+      if (error) {
+        raise(error);
       }
+    },
 
-      const message = error.message ?? "";
-      if (message.includes("forbidden:") || message.toLowerCase().includes("last active admin")) {
-        throw new InternalError("forbidden", "That access change is not permitted.");
+    async disable(input) {
+      const { error } = await client.rpc("access_disable", {
+        p_actor_user_id: input.actorUserId,
+        p_target_user_id: input.targetUserId,
+      });
+      if (error) {
+        raise(error);
       }
-      if (message.includes("not_found:")) {
-        throw new InternalError("not_found", "That record was not found.");
+    },
+
+    async reactivate(input) {
+      const { error } = await client.rpc("access_reactivate", {
+        p_actor_user_id: input.actorUserId,
+        p_target_user_id: input.targetUserId,
+      });
+      if (error) {
+        raise(error);
       }
-      if (message.includes("invalid_input:")) {
-        throw new InternalError("invalid_input", "That access change is not supported.");
-      }
-      throw new InternalError("unavailable", "The service is temporarily unavailable. Please try again.");
     },
   };
 }

@@ -239,48 +239,18 @@ export function createAccessDirectoryService(deps: {
           throw new InternalError("forbidden", "The last active Admin cannot be disabled.");
         }
       }
-      if (staff) {
-        await deps.staff.upsert({
-          userId,
-          role: staff.role,
-          status: "disabled",
-          provisionedBy: actor.userId,
-        });
-      } else if (membership) {
-        await deps.customers.updateMembership(userId, { status: "disabled" });
-      } else {
+      if (!staff && !membership) {
         throw new InternalError("invalid_input", "This user has no access to disable.");
       }
-      await deps.audit.insert({
-        eventType: "ACCESS_DISABLED",
-        actorUserId: actor.userId,
-        targetUserId: userId,
-        previousState: { status: "active", role: staff?.role ?? "customer" },
-        newState: { status: "disabled" },
-      });
+      await deps.transitions.disable({ actorUserId: actor.userId, targetUserId: userId });
       return toView(identity);
     }
 
     if (input.action === "reactivate") {
-      if (staff) {
-        await deps.staff.upsert({
-          userId,
-          role: staff.role,
-          status: "active",
-          provisionedBy: actor.userId,
-        });
-      } else if (membership) {
-        await deps.customers.updateMembership(userId, { status: "active" });
-      } else {
+      if (!staff && !membership) {
         throw new InternalError("invalid_input", "This user has no access to reactivate.");
       }
-      await deps.audit.insert({
-        eventType: "ACCESS_REACTIVATED",
-        actorUserId: actor.userId,
-        targetUserId: userId,
-        previousState: { status: "disabled" },
-        newState: { status: "active", role: staff?.role ?? "customer" },
-      });
+      await deps.transitions.reactivate({ actorUserId: actor.userId, targetUserId: userId });
       return toView(identity);
     }
 

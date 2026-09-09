@@ -11,18 +11,25 @@ export type AccountTypeTransition = {
   | { accountType: "customer"; implementationId: string }
 );
 
+export type AccessStatusTransition = {
+  actorUserId: string;
+  targetUserId: string;
+};
+
 /**
- * Account-type conversion is a single authorization transition, not a sequence
- * of writes. The membership change and its ACCOUNT_TYPE_CHANGED audit event
- * must commit together or not at all, so they are expressed as one operation
- * and executed inside one database transaction.
+ * An access change is a single authorization transition, not a sequence of
+ * writes. The state change and its audit event must commit together or not at
+ * all, so each is expressed as one operation and executed inside one database
+ * transaction.
  */
 export type AccessTransitionStore = {
   changeAccountType(input: AccountTypeTransition): Promise<void>;
+  disable(input: AccessStatusTransition): Promise<void>;
+  reactivate(input: AccessStatusTransition): Promise<void>;
 };
 
 /** Stage names the in-memory double can be told to fail at. */
-export type TransitionStage = "staff" | "membership" | "audit";
+export type TransitionStage = "staff" | "membership" | "status" | "audit";
 
 /**
  * In-memory double. Postgres owns the real guarantee; this models it so the
@@ -106,6 +113,75 @@ export function createMemoryTransitionStore(deps: {
           status: "active",
           implementationId: input.implementationId,
         },
+      });
+    },
+
+    async disable(input) {
+      const staff = await deps.staff.findByUserId(input.targetUserId);
+      const membership = await deps.customers.findMembershipByUserId(input.targetUserId);
+      if (!staff && !membership) {
+        throw new InternalError("invalid_input", "This user has no access to disable.");
+      }
+
+      const failure = deps.failAt?.();
+      if (failure) {
+        throw new InternalError("unavailable", `Injected failure at the ${failure} stage.`);
+      }
+
+      // Internal staff takes precedence, matching resolveAuthorization.
+      if (staff) {
+        await deps.staff.upsert({
+          userId: input.targetUserId,
+          role: staff.role,
+          status: "disabled",
+          provisionedBy: input.actorUserId,
+        });
+      } else {
+        await deps.customers.updateMembership(input.targetUserId, { status: "disabled" });
+      }
+
+      await deps.audit.insert({
+        eventType: "ACCESS_DISABLED",
+        actorUserId: input.actorUserId,
+        targetUserId: input.targetUserId,
+        previousState: { status: "active", role: staff?.role ?? "customer" },
+        newState: { status: "disabled" },
+      });
+    },
+
+    async reactivate(input) {
+      const staff = await deps.staff.findByUserId(input.targetUserId);
+      const membership = await deps.customers.findMembershipByUserId(input.targetUserId);
+      if (!staff && !membership) {
+        throw new InternalError("invalid_input", "This user has no access to reactivate.");
+      }
+
+      const failure = deps.failAt?.();
+      if (failure) {
+        throw new InternalError("unavailable", `Injected failure at the ${failure} stage.`);
+      }
+
+      if (staff) {
+        await deps.staff.upsert({
+          userId: input.targetUserId,
+          role: staff.role,
+          status: "active",
+          provisionedBy: input.actorUserId,
+        });
+        // Only one authorization path may be active.
+        if (membership && membership.status === "active") {
+          await deps.customers.updateMembership(input.targetUserId, { status: "disabled" });
+        }
+      } else {
+        await deps.customers.updateMembership(input.targetUserId, { status: "active" });
+      }
+
+      await deps.audit.insert({
+        eventType: "ACCESS_REACTIVATED",
+        actorUserId: input.actorUserId,
+        targetUserId: input.targetUserId,
+        previousState: { status: "disabled" },
+        newState: { status: "active", role: staff?.role ?? "customer" },
       });
     },
   };

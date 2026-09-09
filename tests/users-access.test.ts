@@ -609,41 +609,254 @@ describe("Users & Access authorization", () => {
     }
   });
 
-  it("performs a conversion as a single transition, not a sequence of writes", async () => {
+  it.each([
+    {
+      label: "conversion",
+      body: { userId: "gauge-1", action: "accountType", accountType: "internal", role: "engineer" },
+      expected: [
+        { op: "changeAccountType", actorUserId: "admin-1", targetUserId: "gauge-1", accountType: "internal", role: "engineer" },
+      ],
+      target: "gauge-1",
+      auditType: "ACCOUNT_TYPE_CHANGED",
+    },
+    {
+      label: "disable",
+      body: { userId: "engineer-1", action: "disable" },
+      expected: [{ op: "disable", actorUserId: "admin-1", targetUserId: "engineer-1" }],
+      target: "engineer-1",
+      auditType: "ACCESS_DISABLED",
+    },
+    {
+      label: "reactivate",
+      body: { userId: "engineer-1", action: "reactivate" },
+      expected: [{ op: "reactivate", actorUserId: "admin-1", targetUserId: "engineer-1" }],
+      target: "engineer-1",
+      auditType: "ACCESS_REACTIVATED",
+    },
+  ])("performs $label as a single transition, not a sequence of writes", async (scenario) => {
     const calls: unknown[] = [];
+    const staffBefore = await world.staffStore.findByUserId(scenario.target);
     setAccessSingletonsForTests({
       transitions: {
         async changeAccountType(input) {
-          calls.push(input);
+          calls.push({ op: "changeAccountType", ...input });
+        },
+        async disable(input) {
+          calls.push({ op: "disable", ...input });
+        },
+        async reactivate(input) {
+          calls.push({ op: "reactivate", ...input });
         },
       },
     });
     asUser("admin-1", "admin@bookmax.ai");
     const { PATCH } = await import("@/app/api/implementation/users/route");
-    const converted = await PATCH(
+    const response = await PATCH(
       new NextRequest("http://localhost:3000/api/implementation/users", {
         method: "PATCH",
-        body: JSON.stringify({
-          userId: "gauge-1",
-          action: "accountType",
-          accountType: "internal",
-          role: "engineer",
-        }),
+        body: JSON.stringify(scenario.body),
       }),
     );
-    expect(converted.status).toBe(200);
-    expect(calls).toEqual([
-      {
-        actorUserId: "admin-1",
-        targetUserId: "gauge-1",
-        accountType: "internal",
-        role: "engineer",
-      },
-    ]);
+    expect(response.status).toBe(200);
+    expect(calls).toEqual(scenario.expected);
+
     // The service delegated the whole transition; it wrote nothing itself.
-    expect(await world.staffStore.findByUserId("gauge-1")).toBeNull();
-    const events = await world.accessAudit.listByTarget("gauge-1");
-    expect(events.some((event) => event.eventType === "ACCOUNT_TYPE_CHANGED")).toBe(false);
+    expect(await world.staffStore.findByUserId(scenario.target)).toEqual(staffBefore);
+    const events = await world.accessAudit.listByTarget(scenario.target);
+    expect(events.some((event) => event.eventType === scenario.auditType)).toBe(false);
+  });
+
+  it.each(["status", "audit"] as const)(
+    "a disable failure at the %s stage leaves access unchanged",
+    async (stage) => {
+      const staffBefore = await world.staffStore.findByUserId("engineer-1");
+      world.failAt.stage = stage;
+      asUser("admin-1", "admin@bookmax.ai");
+      const { PATCH } = await import("@/app/api/implementation/users/route");
+      const attempted = await PATCH(
+        new NextRequest("http://localhost:3000/api/implementation/users", {
+          method: "PATCH",
+          body: JSON.stringify({ userId: "engineer-1", action: "disable" }),
+        }),
+      );
+      expect(attempted.status).toBe(503);
+
+      expect(await world.staffStore.findByUserId("engineer-1")).toEqual(staffBefore);
+      expect(staffBefore?.status).toBe("active");
+      const events = await world.accessAudit.listByTarget("engineer-1");
+      expect(events.some((event) => event.eventType === "ACCESS_DISABLED")).toBe(false);
+
+      const decision = await resolveAuthorization({ userId: "engineer-1", email: "engineer@bookmax.ai" });
+      expect(decision.kind).toBe("internal");
+    },
+  );
+
+  it.each(["status", "audit"] as const)(
+    "a reactivate failure at the %s stage leaves access disabled",
+    async (stage) => {
+      const staffBefore = await world.staffStore.findByUserId("disabled-1");
+      expect(staffBefore?.status).toBe("disabled");
+      world.failAt.stage = stage;
+      asUser("admin-1", "admin@bookmax.ai");
+      const { PATCH } = await import("@/app/api/implementation/users/route");
+      const attempted = await PATCH(
+        new NextRequest("http://localhost:3000/api/implementation/users", {
+          method: "PATCH",
+          body: JSON.stringify({ userId: "disabled-1", action: "reactivate" }),
+        }),
+      );
+      expect(attempted.status).toBe(503);
+
+      expect(await world.staffStore.findByUserId("disabled-1")).toEqual(staffBefore);
+      const events = await world.accessAudit.listByTarget("disabled-1");
+      expect(events.some((event) => event.eventType === "ACCESS_REACTIVATED")).toBe(false);
+
+      const decision = await resolveAuthorization({ userId: "disabled-1", email: "disabled@bookmax.ai" });
+      expect(decision.kind).toBe("disabled");
+      expect(landingPath(decision)).toBe("/access/denied");
+    },
+  );
+
+  it("a customer disable failure leaves the membership active", async () => {
+    world.failAt.stage = "audit";
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const attempted = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: "customer-1", action: "disable" }),
+      }),
+    );
+    expect(attempted.status).toBe(503);
+
+    const membership = await world.customers.findMembershipByUserId("customer-1");
+    expect(membership?.status).toBe("active");
+    expect(membership?.implementationId).toBeTruthy();
+    const events = await world.accessAudit.listByTarget("customer-1");
+    expect(events.some((event) => event.eventType === "ACCESS_DISABLED")).toBe(false);
+  });
+
+  it("disable and reactivate a customer preserve the implementation and write audit", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const before = await world.customers.findMembershipByUserId("customer-1");
+
+    const disabled = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: "customer-1", action: "disable" }),
+      }),
+    );
+    expect(disabled.status).toBe(200);
+    let membership = await world.customers.findMembershipByUserId("customer-1");
+    expect(membership?.status).toBe("disabled");
+    expect(membership?.implementationId).toBe(before?.implementationId);
+    expect((await resolveAuthorization({ userId: "customer-1", email: "priya@hotel.com" })).kind).toBe("disabled");
+
+    const reactivated = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: "customer-1", action: "reactivate" }),
+      }),
+    );
+    expect(reactivated.status).toBe(200);
+    membership = await world.customers.findMembershipByUserId("customer-1");
+    expect(membership?.status).toBe("active");
+    expect(membership?.implementationId).toBe(before?.implementationId);
+    expect((await resolveAuthorization({ userId: "customer-1", email: "priya@hotel.com" })).kind).toBe("customer");
+
+    const events = await world.accessAudit.listByTarget("customer-1");
+    const disabledEvent = events.find((event) => event.eventType === "ACCESS_DISABLED");
+    const reactivatedEvent = events.find((event) => event.eventType === "ACCESS_REACTIVATED");
+    expect(disabledEvent?.actorUserId).toBe("admin-1");
+    expect(disabledEvent?.previousState).toEqual({ status: "active", role: "customer" });
+    expect(disabledEvent?.newState).toEqual({ status: "disabled" });
+    expect(reactivatedEvent?.previousState).toEqual({ status: "disabled" });
+    expect(reactivatedEvent?.newState).toEqual({ status: "active", role: "customer" });
+  });
+
+  it("reactivating a converted Engineer never leaves both paths active", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const convert = (body: Record<string, unknown>) =>
+      PATCH(
+        new NextRequest("http://localhost:3000/api/implementation/users", {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        }),
+      );
+
+    expect(
+      (await convert({ userId: "gauge-1", action: "accountType", accountType: "internal", role: "engineer" })).status,
+    ).toBe(200);
+    expect((await convert({ userId: "gauge-1", action: "disable" })).status).toBe(200);
+    expect((await convert({ userId: "gauge-1", action: "reactivate" })).status).toBe(200);
+
+    const staff = await world.staffStore.findByUserId("gauge-1");
+    const membership = await world.customers.findMembershipByUserId("gauge-1");
+    expect(staff?.status).toBe("active");
+    expect(staff?.role).toBe("engineer");
+    expect(membership?.status).toBe("disabled");
+    expect(membership?.implementationId).toBeTruthy();
+    expect(staff?.status === "active" && membership?.status === "active").toBe(false);
+  });
+
+  it("rejects disable and reactivate for a user with no access", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    for (const action of ["disable", "reactivate"] as const) {
+      const attempted = await PATCH(
+        new NextRequest("http://localhost:3000/api/implementation/users", {
+          method: "PATCH",
+          body: JSON.stringify({ userId: "pending-1", action }),
+        }),
+      );
+      expect(attempted.status).toBe(400);
+    }
+    expect(await world.staffStore.findByUserId("pending-1")).toBeNull();
+    expect(await world.customers.findMembershipByUserId("pending-1")).toBeNull();
+    expect(await world.accessAudit.listByTarget("pending-1")).toEqual([]);
+  });
+
+  it("rejects disable and reactivate for an unknown target", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    for (const action of ["disable", "reactivate"] as const) {
+      const attempted = await PATCH(
+        new NextRequest("http://localhost:3000/api/implementation/users", {
+          method: "PATCH",
+          body: JSON.stringify({ userId: "does-not-exist", action }),
+        }),
+      );
+      expect(attempted.status).toBe(404);
+    }
+  });
+
+  it("rejects a non-Admin attempting to disable or reactivate another identity", async () => {
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const staffBefore = await world.staffStore.findByUserId("engineer-1");
+
+    for (const [userId, email] of [
+      ["customer-1", "priya@hotel.com"],
+      ["gauge-1", "asena@in-gauge.io"],
+      ["engineer-1", "engineer@bookmax.ai"],
+      ["viewer-1", "viewer@bookmax.ai"],
+    ] as const) {
+      asUser(userId, email);
+      for (const action of ["disable", "reactivate"] as const) {
+        const attempted = await PATCH(
+          new NextRequest("http://localhost:3000/api/implementation/users", {
+            method: "PATCH",
+            body: JSON.stringify({ userId: "engineer-1", action }),
+          }),
+        );
+        expect(attempted.status).toBe(403);
+      }
+    }
+
+    expect(await world.staffStore.findByUserId("engineer-1")).toEqual(staffBefore);
+    const events = await world.accessAudit.listByTarget("engineer-1");
+    expect(events).toEqual([]);
   });
 
   it("rejects a non-Admin attempting a conversion", async () => {
