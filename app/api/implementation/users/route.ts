@@ -72,6 +72,7 @@ export async function PATCH(request: NextRequest) {
       userId?: string;
       action?: string;
       role?: string;
+      accountType?: string;
       implementationId?: string;
     };
     if (!body.userId || !body.action) {
@@ -90,7 +91,15 @@ export async function PATCH(request: NextRequest) {
             ? { action: "reactivate" as const }
             : body.action === "assign"
               ? { action: "assign" as const, implementationId: body.implementationId || "" }
-              : null;
+              : body.action === "accountType" && body.accountType === "internal" && isRole(body.role)
+                ? { action: "accountType" as const, accountType: "internal" as const, role: body.role }
+                : body.action === "accountType" && body.accountType === "customer"
+                  ? {
+                      action: "accountType" as const,
+                      accountType: "customer" as const,
+                      implementationId: body.implementationId || "",
+                    }
+                  : null;
     if (!action) {
       return NextResponse.json(
         { ok: false, code: "invalid_input", error: "That access change is not supported." },

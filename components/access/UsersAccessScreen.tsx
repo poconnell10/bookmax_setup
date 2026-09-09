@@ -12,7 +12,9 @@ type ConfirmAction =
   | { kind: "promote"; role: "admin" }
   | { kind: "disable" }
   | { kind: "enable" }
-  | { kind: "impl"; implementationId: string };
+  | { kind: "impl"; implementationId: string }
+  | { kind: "convertInternal"; role: InternalRole }
+  | { kind: "convertCustomer"; implementationId: string };
 
 type AuditRow = AccessAuditView & {
   actorUserId?: string;
@@ -57,6 +59,7 @@ const AULABEL: Record<string, string> = {
   ACCESS_DISABLED: "Access disabled",
   ACCESS_REACTIVATED: "Access reactivated",
   CUSTOMER_ASSIGNMENT_CHANGED: "Implementation changed",
+  ACCOUNT_TYPE_CHANGED: "Account type changed",
 };
 
 const ACCOUNT_OPTIONS = [
@@ -389,7 +392,21 @@ export function UsersAccessScreen({
             ? { userId: selected.userId, action: "disable" }
             : action.kind === "enable"
               ? { userId: selected.userId, action: "reactivate" }
-              : { userId: selected.userId, action: "assign", implementationId: action.implementationId };
+              : action.kind === "convertInternal"
+                ? {
+                    userId: selected.userId,
+                    action: "accountType",
+                    accountType: "internal",
+                    role: action.role,
+                  }
+                : action.kind === "convertCustomer"
+                  ? {
+                      userId: selected.userId,
+                      action: "accountType",
+                      accountType: "customer",
+                      implementationId: action.implementationId,
+                    }
+                  : { userId: selected.userId, action: "assign", implementationId: action.implementationId };
       const response = await fetch("/api/implementation/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -409,6 +426,8 @@ export function UsersAccessScreen({
       if (action.kind === "disable") setToast("Access disabled");
       else if (action.kind === "enable") setToast("Access reactivated");
       else if (action.kind === "impl") setToast("Implementation changed");
+      else if (action.kind === "convertCustomer") setToast("Changed to Customer");
+      else if (action.kind === "convertInternal") setToast(`Changed to Internal / ${ROLEDEF[action.role].l}`);
       else setToast(`Role changed to ${ROLEDEF[action.role].l}`);
     } finally {
       setBusy(false);
@@ -612,6 +631,14 @@ export function UsersAccessScreen({
                       setConfirm({ kind: "impl", implementationId: id });
                     }
                   }}
+                  onConvertInternal={(next) =>
+                    setConfirm(next === "admin" ? { kind: "convertInternal", role: "admin" } : { kind: "convertInternal", role: next })
+                  }
+                  onConvertCustomer={(id) => {
+                    setImplementationId(id);
+                    setConfirm({ kind: "convertCustomer", implementationId: id });
+                  }}
+                  onPickImplementation={setImplementationId}
                 />
               ) : null}
             </div>
@@ -652,13 +679,17 @@ export function UsersAccessScreen({
                       disabled={busy}
                       onClick={() => void commit(confirm)}
                     >
-                      {confirm.kind === "promote"
+                      {confirm.kind === "promote" || (confirm.kind === "convertInternal" && confirm.role === "admin")
                         ? "Promote to Admin"
-                        : confirm.kind === "disable"
-                          ? "Disable access"
-                          : confirm.kind === "enable"
-                            ? "Reactivate"
-                            : "Confirm change"}
+                        : confirm.kind === "convertInternal"
+                          ? `Change to ${ROLEDEF[confirm.role].l}`
+                          : confirm.kind === "convertCustomer"
+                            ? "Change to Customer"
+                            : confirm.kind === "disable"
+                              ? "Disable access"
+                              : confirm.kind === "enable"
+                                ? "Reactivate"
+                                : "Confirm change"}
                     </button>
                   </div>
                 </>
@@ -830,6 +861,9 @@ function ManageBody({
   provisionedBy,
   onRole,
   onImplementation,
+  onConvertInternal,
+  onConvertCustomer,
+  onPickImplementation,
 }: {
   user: AccessUserView;
   audit: AuditRow[];
@@ -839,9 +873,13 @@ function ManageBody({
   provisionedBy: string | null;
   onRole: (role: InternalRole) => void;
   onImplementation: (id: string) => void;
+  onConvertInternal: (role: InternalRole) => void;
+  onConvertCustomer: (id: string) => void;
+  onPickImplementation: (id: string) => void;
 }) {
   const def = user.role ? ROLEDEF[user.role] : null;
   const internal = user.accountType === "internal" && user.status === "active";
+  const customer = user.accountType === "customer" && user.status === "active";
   const status = statusBadge(user.status);
 
   return (
@@ -867,6 +905,26 @@ function ManageBody({
             history is kept.
           </span>
         </div>
+      ) : null}
+      {customer ? (
+        <>
+          <div className="sq">Change account type</div>
+          <div className="opts">
+            {(["engineer", "admin"] as const).map((next) => (
+              <button key={next} type="button" className="opt" onClick={() => onConvertInternal(next)}>
+                <span className="rd" />
+                <span>
+                  <span className="ol">{next === "admin" ? "Internal / Admin" : "Internal / Engineer"}</span>
+                  <span className="od">
+                    {next === "admin"
+                      ? "Can manage Users & Access, including this conversion."
+                      : "Can work Submissions. Cannot open Users & Access."}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
       ) : null}
       {internal ? (
         <>
@@ -897,6 +955,41 @@ function ManageBody({
                 );
               })}
           </div>
+          {blocked ? null : (
+            <>
+              <div className="sq">Change account type</div>
+              <div className="opts">
+                <button
+                  type="button"
+                  className="opt"
+                  disabled={!implementationId}
+                  onClick={() => onConvertCustomer(implementationId)}
+                >
+                  <span className="rd" />
+                  <span>
+                    <span className="ol">Customer</span>
+                    <span className="od">Can complete their own BookMax Setup and nothing else.</span>
+                  </span>
+                </button>
+              </div>
+              <div className="f" style={{ marginTop: 0 }}>
+                <TraqraSelect
+                  id="cimpl"
+                  value={implementationId}
+                  searchable
+                  placeholder="Select the implementation"
+                  ariaLabel="Customer implementation"
+                  options={implementations.map((option) => ({
+                    value: option.id,
+                    label: option.name,
+                    desc: option.id,
+                  }))}
+                  onChange={onPickImplementation}
+                />
+                <div className="hint">Customer access requires one implementation. Email domain does not grant this.</div>
+              </div>
+            </>
+          )}
         </>
       ) : null}
       {user.role === "customer" ? (
@@ -981,11 +1074,24 @@ function ConfirmBody({ user, action }: { user: AccessUserView; action: ConfirmAc
       title: "Move to a different implementation?",
       body: "They will lose access to the current setup and gain access to the new one.",
     },
+    convertInternal: {
+      tone: "pu",
+      title: action.kind === "convertInternal" && action.role === "admin" ? "Change to Internal / Admin?" : "Change to Internal / Engineer?",
+      body:
+        action.kind === "convertInternal" && action.role === "admin"
+          ? `${user.name || user.email} will lose customer setup access and will be able to grant and remove access for everyone, including you.`
+          : `${user.name || user.email} will lose customer setup access and land on Submissions. Email domain does not grant this.`,
+    },
+    convertCustomer: {
+      tone: "pu",
+      title: "Change to Customer?",
+      body: `${user.name || user.email} will lose internal workspace access and only be able to open the assigned implementation.`,
+    },
   }[action.kind];
 
   const from =
-    action.kind === "role" || action.kind === "promote"
-      ? roleLabel(user.role) || "—"
+    action.kind === "role" || action.kind === "promote" || action.kind === "convertInternal" || action.kind === "convertCustomer"
+      ? `${accountLabel(user.accountType)}${user.role ? ` / ${roleLabel(user.role)}` : ""}`
       : action.kind === "disable"
         ? "Active"
         : action.kind === "enable"
@@ -994,11 +1100,15 @@ function ConfirmBody({ user, action }: { user: AccessUserView; action: ConfirmAc
   const to =
     action.kind === "role" || action.kind === "promote"
       ? ROLEDEF[action.role].l
-      : action.kind === "disable"
-        ? "Disabled"
-        : action.kind === "enable"
-          ? "Active"
-          : "New implementation";
+      : action.kind === "convertInternal"
+        ? `Internal / ${ROLEDEF[action.role].l}`
+        : action.kind === "convertCustomer"
+          ? "Customer"
+          : action.kind === "disable"
+            ? "Disabled"
+            : action.kind === "enable"
+              ? "Active"
+              : "New implementation";
   const recorded =
     action.kind === "disable"
       ? "ACCESS_DISABLED"
@@ -1006,7 +1116,9 @@ function ConfirmBody({ user, action }: { user: AccessUserView; action: ConfirmAc
         ? "ACCESS_REACTIVATED"
         : action.kind === "impl"
           ? "CUSTOMER_ASSIGNMENT_CHANGED"
-          : "ROLE_CHANGED";
+          : action.kind === "convertInternal" || action.kind === "convertCustomer"
+            ? "ACCOUNT_TYPE_CHANGED"
+            : "ROLE_CHANGED";
 
   return (
     <>
@@ -1015,7 +1127,15 @@ function ConfirmBody({ user, action }: { user: AccessUserView; action: ConfirmAc
         <div className="cd2">{copy.body}</div>
       </div>
       <div className="chg">
-        <span className="cl2">{action.kind === "impl" ? "Implementation" : action.kind === "disable" || action.kind === "enable" ? "Status" : "Role"}</span>
+        <span className="cl2">
+          {action.kind === "impl"
+            ? "Implementation"
+            : action.kind === "disable" || action.kind === "enable"
+              ? "Status"
+              : action.kind === "convertInternal" || action.kind === "convertCustomer"
+                ? "Account type"
+                : "Role"}
+        </span>
         <span className="cv2">
           <s>{from}</s>
           {to}

@@ -22,7 +22,9 @@ export type ManageInput =
   | { action: "role"; role: InternalRole }
   | { action: "disable" }
   | { action: "reactivate" }
-  | { action: "assign"; implementationId: string };
+  | { action: "assign"; implementationId: string }
+  | { action: "accountType"; accountType: "internal"; role: InternalRole }
+  | { action: "accountType"; accountType: "customer"; implementationId: string };
 
 function assertAdmin(actor: Actor) {
   if (!canAdministerUsers(actor.role) || actor.status !== "active") {
@@ -265,6 +267,82 @@ export function createAccessDirectoryService(deps: {
         targetUserId: userId,
         previousState: { status: "disabled" },
         newState: { status: "active", role: staff?.role ?? "customer" },
+      });
+      return toView(identity);
+    }
+
+    if (input.action === "accountType") {
+      const previous = {
+        accountType: staff ? "internal" : membership ? "customer" : "unassigned",
+        role: staff?.role ?? (membership ? "customer" : null),
+        status: staff?.status ?? membership?.status ?? "pending",
+        implementationId: membership?.implementationId ?? null,
+      };
+
+      if (input.accountType === "internal") {
+        if (staff?.role === "admin" && staff.status === "active" && input.role !== "admin") {
+          const remaining = await deps.staff.countActiveAdmins(userId);
+          if (remaining === 0) {
+            throw new InternalError("forbidden", "The last active Admin cannot be changed.");
+          }
+        }
+        await deps.staff.upsert({
+          userId,
+          role: input.role,
+          status: "active",
+          provisionedBy: actor.userId,
+        });
+        if (membership) {
+          await deps.customers.updateMembership(userId, { status: "disabled" });
+        }
+        await deps.audit.insert({
+          eventType: "ACCOUNT_TYPE_CHANGED",
+          actorUserId: actor.userId,
+          targetUserId: userId,
+          previousState: previous,
+          newState: { accountType: "internal", role: input.role, status: "active" },
+        });
+        return toView(identity);
+      }
+
+      if (staff?.role === "admin" && staff.status === "active") {
+        const remaining = await deps.staff.countActiveAdmins(userId);
+        if (remaining === 0) {
+          throw new InternalError("forbidden", "The last active Admin cannot be changed.");
+        }
+      }
+      if (!input.implementationId) {
+        throw new InternalError("invalid_input", "Customer access requires an implementation.");
+      }
+      const implementation = await deps.customers.findImplementationById(input.implementationId);
+      if (!implementation) {
+        throw new InternalError("not_found", "Implementation was not found.");
+      }
+      if (staff) {
+        await deps.staff.remove(userId);
+      }
+      if (membership) {
+        await deps.customers.updateMembership(userId, {
+          implementationId: input.implementationId,
+          status: "active",
+        });
+      } else {
+        await deps.customers.insertMembership({
+          implementationId: input.implementationId,
+          userId,
+        });
+      }
+      await deps.audit.insert({
+        eventType: "ACCOUNT_TYPE_CHANGED",
+        actorUserId: actor.userId,
+        targetUserId: userId,
+        previousState: previous,
+        newState: {
+          accountType: "customer",
+          role: "customer",
+          status: "active",
+          implementationId: input.implementationId,
+        },
       });
       return toView(identity);
     }

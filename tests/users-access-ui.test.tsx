@@ -33,6 +33,20 @@ const users: AccessUserView[] = [
     provisionedBy: "admin-1",
   },
   {
+    userId: "cust-1",
+    email: "asena@in-gauge.io",
+    emailMasked: "a••••@in-gauge.io",
+    name: "Asena",
+    accountType: "customer",
+    role: "customer",
+    status: "active",
+    lastSignInAt: "2026-09-08T09:00:00.000Z",
+    firstSignInAt: "2026-08-01T08:00:00.000Z",
+    implementationId: "impl-1",
+    implementationName: "Disney's Coronado Springs",
+    provisionedBy: "admin-1",
+  },
+  {
     userId: "pending-1",
     email: "new@hotel.com",
     emailMasked: "ne•••@hotel.com",
@@ -95,6 +109,29 @@ describe("Users & Access HTML fidelity", () => {
     expect(identityLabel.nextElementSibling).toBe(identityValue);
     expect(identityLabel.parentElement?.className).toBe("kv");
     expect(identityLabel.parentElement?.parentElement?.className).toBe("idmeta");
+  });
+
+  it("lets an Admin change a Customer to Internal / Engineer or Admin", async () => {
+    const customer = users.find((row) => row.userId === "cust-1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ ok: true, audit: [], user: customer }),
+      })),
+    );
+    render(
+      <UsersAccessScreen
+        initialUsers={users}
+        initialImplementations={[{ id: "impl-1", name: "Disney's Coronado Springs" }]}
+      />,
+    );
+    screen.getAllByRole("button", { name: "Manage" })[2].click();
+    expect(await screen.findByRole("complementary", { name: "Manage access" })).toBeInTheDocument();
+    expect(screen.getByText("Change account type")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Internal \/ Engineer/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Internal \/ Admin/ })).toBeInTheDocument();
+    expect(screen.getAllByText("Disney's Coronado Springs").length).toBeGreaterThan(0);
   });
 
   it("opens the provision drawer from a pending row", async () => {

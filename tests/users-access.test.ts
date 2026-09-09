@@ -71,6 +71,7 @@ async function seedWorld() {
     { userId: "engineer-1", email: "engineer@bookmax.ai", lastSignInAt: STAMP, createdAt: STAMP },
     { userId: "viewer-1", email: "viewer@bookmax.ai", lastSignInAt: STAMP, createdAt: STAMP },
     { userId: "customer-1", email: "priya@hotel.com", lastSignInAt: STAMP, createdAt: STAMP },
+    { userId: "gauge-1", email: "asena@in-gauge.io", lastSignInAt: STAMP, createdAt: STAMP },
     { userId: "pending-1", email: "new@hotel.com", lastSignInAt: STAMP, createdAt: STAMP },
     { userId: "pending-2", email: "viewer-new@hotel.com", lastSignInAt: STAMP, createdAt: STAMP },
     { userId: "pending-3", email: "cust-new@hotel.com", lastSignInAt: STAMP, createdAt: STAMP },
@@ -93,6 +94,13 @@ async function seedWorld() {
     city: "Barcelona",
     country: "Spain",
     contactName: "Priya Raman",
+  });
+  await customer.ensureForUser("gauge-1");
+  await customer.saveProperty("gauge-1", {
+    name: "Disney's Coronado Springs",
+    city: "Orlando",
+    country: "USA",
+    contactName: "Asena",
   });
   await customer.ensureForUser("both-1");
   const credentials = createMemoryCredentialStore();
@@ -344,6 +352,136 @@ describe("Users & Access authorization", () => {
     );
     expect(disabled.status).toBe(403);
     expect(downgraded.status).toBe(403);
+  });
+
+  it("does not grant Engineer or Admin from @in-gauge.io or @frontlinepg.com", async () => {
+    const decision = await resolveAuthorization({
+      userId: "gauge-1",
+      email: "asena@in-gauge.io",
+    });
+    expect(decision.kind).toBe("customer");
+    expect(landingPath(decision)).toBe("/setup/property");
+    const fpg = await resolveAuthorization({
+      userId: "pending-1",
+      email: "alex@frontlinepg.com",
+    });
+    expect(fpg.kind).toBe("pending");
+  });
+
+  it("admin can convert an existing customer to Internal / Engineer", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const converted = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({
+          userId: "gauge-1",
+          action: "accountType",
+          accountType: "internal",
+          role: "engineer",
+        }),
+      }),
+    );
+    expect(converted.status).toBe(200);
+    const body = await converted.json();
+    expect(body.user.accountType).toBe("internal");
+    expect(body.user.role).toBe("engineer");
+    expect(body.user.status).toBe("active");
+
+    const decision = await resolveAuthorization({
+      userId: "gauge-1",
+      email: "asena@in-gauge.io",
+    });
+    expect(decision.kind).toBe("internal");
+    if (decision.kind === "internal") {
+      expect(decision.role).toBe("engineer");
+    }
+    expect(landingPath(decision)).toBe("/implementation/submissions");
+
+    asUser("gauge-1", "asena@in-gauge.io");
+    const { GET: submissions } = await import("@/app/api/implementation/submissions/route");
+    const { GET: users } = await import("@/app/api/implementation/users/route");
+    const { GET: setup } = await import("@/app/api/setup/context/route");
+    expect((await submissions(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(200);
+    expect((await users(new NextRequest("http://localhost:3000/api/implementation/users"))).status).toBe(403);
+    expect((await setup(new NextRequest("http://localhost:3000/api/setup/context"))).status).toBe(403);
+  });
+
+  it("admin can convert an existing customer to Internal / Admin", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const converted = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({
+          userId: "customer-1",
+          action: "accountType",
+          accountType: "internal",
+          role: "admin",
+        }),
+      }),
+    );
+    expect(converted.status).toBe(200);
+    expect((await converted.json()).user.role).toBe("admin");
+    const decision = await resolveAuthorization({
+      userId: "customer-1",
+      email: "priya@hotel.com",
+    });
+    expect(landingPath(decision)).toBe("/implementation/users");
+  });
+
+  it("admin can convert Internal / Engineer back to Customer with an implementation", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { GET, PATCH } = await import("@/app/api/implementation/users/route");
+    const listed = await GET(new NextRequest("http://localhost:3000/api/implementation/users"));
+    const implementationId = (await listed.json()).implementations[0].id;
+    const converted = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({
+          userId: "engineer-1",
+          action: "accountType",
+          accountType: "customer",
+          implementationId,
+        }),
+      }),
+    );
+    expect(converted.status).toBe(200);
+    const body = await converted.json();
+    expect(body.user.accountType).toBe("customer");
+    expect(body.user.role).toBe("customer");
+    expect(body.user.implementationId).toBe(implementationId);
+    const decision = await resolveAuthorization({
+      userId: "engineer-1",
+      email: "engineer@bookmax.ai",
+    });
+    expect(decision.kind).toBe("customer");
+    expect(landingPath(decision)).toBe("/setup/property");
+  });
+
+  it("the last active Admin cannot be converted to Customer", async () => {
+    const staffStore = createMemoryStaffStore([staffOf("admin-1", "admin")]);
+    setInternalSingletonsForTests({ staff: staffStore });
+    setAccessSingletonsForTests({
+      identities: createMemoryIdentityStore([
+        { userId: "admin-1", email: "admin@bookmax.ai", lastSignInAt: STAMP, createdAt: STAMP },
+      ]),
+      audit: createMemoryAccessAuditStore(),
+    });
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const converted = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({
+          userId: "admin-1",
+          action: "accountType",
+          accountType: "customer",
+          implementationId: "missing",
+        }),
+      }),
+    );
+    expect(converted.status).toBe(403);
   });
 
   it("22-25. submissions stay role-scoped", async () => {
