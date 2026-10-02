@@ -84,6 +84,16 @@ export function createSupabaseStaffStore(client: SupabaseClient): InternalStaffS
       return mapStaff(data as StaffRow);
     },
 
+    async remove(userId) {
+      const { error } = await client.from("internal_staff").delete().eq("user_id", userId);
+      if (error) {
+        if (error.message?.toLowerCase().includes("last active admin")) {
+          throw new InternalError("forbidden", "The last active Admin cannot be changed.");
+        }
+        throw new InternalError("unavailable", "The service is temporarily unavailable. Please try again.");
+      }
+    },
+
     async countActiveAdmins(exceptUserId) {
       let query = client
         .from("internal_staff")

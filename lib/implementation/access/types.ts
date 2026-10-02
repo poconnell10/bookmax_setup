@@ -4,6 +4,7 @@ export const ACCESS_AUDIT_EVENTS = [
   "ACCESS_DISABLED",
   "ACCESS_REACTIVATED",
   "CUSTOMER_ASSIGNMENT_CHANGED",
+  "ACCOUNT_TYPE_CHANGED",
 ] as const;
 
 export type AccessAuditEventType = (typeof ACCESS_AUDIT_EVENTS)[number];

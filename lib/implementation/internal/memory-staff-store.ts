@@ -1,4 +1,4 @@
-import type { InternalStaff } from "@/lib/implementation/internal/types";
+import { InternalError, type InternalStaff } from "@/lib/implementation/internal/types";
 import type { InternalStaffStore, StaffWrite } from "@/lib/implementation/internal/staff-store";
 
 export function createMemoryStaffStore(seed: InternalStaff[] = []): InternalStaffStore {
@@ -26,6 +26,22 @@ export function createMemoryStaffStore(seed: InternalStaff[] = []): InternalStaf
       };
       rows.set(input.userId, next);
       return next;
+    },
+
+    async remove(userId) {
+      const current = rows.get(userId);
+      if (!current) {
+        return;
+      }
+      if (current.role === "admin" && current.status === "active") {
+        const remaining = [...rows.values()].filter(
+          (row) => row.role === "admin" && row.status === "active" && row.userId !== userId,
+        ).length;
+        if (remaining === 0) {
+          throw new InternalError("forbidden", "The last active Admin cannot be changed.");
+        }
+      }
+      rows.delete(userId);
     },
 
     async countActiveAdmins(exceptUserId) {

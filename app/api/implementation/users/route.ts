@@ -41,10 +41,11 @@ export async function POST(request: NextRequest) {
     }
     const service = getAccessDirectoryService();
     if (body.accountType === "customer") {
+      // A client-supplied implementation is ignored. First-time Customer access
+      // always creates the identity's own implementation server-side.
       const user = await service.provision(staff, {
         userId: body.userId,
         accountType: "customer",
-        implementationId: body.implementationId || "",
       });
       return staff.attachAuthCookies(NextResponse.json({ ok: true, user }));
     }
@@ -72,6 +73,7 @@ export async function PATCH(request: NextRequest) {
       userId?: string;
       action?: string;
       role?: string;
+      accountType?: string;
       implementationId?: string;
     };
     if (!body.userId || !body.action) {
@@ -90,7 +92,15 @@ export async function PATCH(request: NextRequest) {
             ? { action: "reactivate" as const }
             : body.action === "assign"
               ? { action: "assign" as const, implementationId: body.implementationId || "" }
-              : null;
+              : body.action === "accountType" && body.accountType === "internal" && isRole(body.role)
+                ? { action: "accountType" as const, accountType: "internal" as const, role: body.role }
+                : body.action === "accountType" && body.accountType === "customer"
+                  ? {
+                      action: "accountType" as const,
+                      accountType: "customer" as const,
+                      implementationId: body.implementationId || null,
+                    }
+                  : null;
     if (!action) {
       return NextResponse.json(
         { ok: false, code: "invalid_input", error: "That access change is not supported." },
