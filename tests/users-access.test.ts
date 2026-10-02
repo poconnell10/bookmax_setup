@@ -638,6 +638,9 @@ describe("Users & Access authorization", () => {
     const staffBefore = await world.staffStore.findByUserId(scenario.target);
     setAccessSingletonsForTests({
       transitions: {
+        async provisionCustomer(input) {
+          calls.push({ op: "provisionCustomer", ...input });
+        },
         async changeAccountType(input) {
           calls.push({ op: "changeAccountType", ...input });
         },
@@ -1130,6 +1133,293 @@ describe("Users & Access authorization", () => {
     );
     expect(opened.status).toBe(403);
     expect(JSON.stringify(await opened.json())).not.toContain(SECRET);
+  });
+
+  it("a verified identity with no grant cannot reach onboarding", async () => {
+    const decision = await resolveAuthorization({ userId: "pending-1", email: "new@hotel.com" });
+    expect(decision.kind).toBe("pending");
+    expect(landingPath(decision)).toBe("/access/pending");
+
+    asUser("pending-1", "new@hotel.com");
+    const { GET: context } = await import("@/app/api/setup/context/route");
+    const { POST: property } = await import("@/app/api/setup/property/route");
+    expect((await context(new NextRequest("http://localhost:3000/api/setup/context"))).status).toBe(403);
+    expect(
+      (
+        await property(
+          new NextRequest("http://localhost:3000/api/setup/property", {
+            method: "POST",
+            body: JSON.stringify({ name: "Unauthorized Hotel", contactName: "Nobody" }),
+          }),
+        )
+      ).status,
+    ).toBe(403);
+    expect(await world.customers.findMembershipByUserId("pending-1")).toBeNull();
+  });
+
+  it("provisions Customer access with no implementation and creates the identity's own one", async () => {
+    const implementationsBefore = (await world.customers.listImplementations()).length;
+    asUser("admin-1", "admin@bookmax.ai");
+    const { POST } = await import("@/app/api/implementation/users/route");
+    const granted = await POST(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "POST",
+        body: JSON.stringify({ userId: "pending-1", accountType: "customer" }),
+      }),
+    );
+    expect(granted.status).toBe(200);
+    const body = await granted.json();
+    expect(body.user.accountType).toBe("customer");
+    expect(body.user.role).toBe("customer");
+    expect(body.user.status).toBe("active");
+    expect(body.user.implementationId).toBeTruthy();
+
+    // Exactly one new implementation, owned only by this identity, with no property.
+    const implementations = await world.customers.listImplementations();
+    expect(implementations.length).toBe(implementationsBefore + 1);
+    const membership = await world.customers.findMembershipByUserId("pending-1");
+    expect(membership?.implementationId).toBe(body.user.implementationId);
+    expect(membership?.status).toBe("active");
+    expect(membership?.role).toBe("customer");
+    const implementation = await world.customers.findImplementationById(membership!.implementationId);
+    expect(implementation?.status).toBe("started");
+    expect(await world.customers.findPropertyByImplementationId(membership!.implementationId)).toBeNull();
+    const owners = (await world.customers.listMemberships()).filter(
+      (row) => row.implementationId === membership!.implementationId,
+    );
+    expect(owners.map((row) => row.userId)).toEqual(["pending-1"]);
+
+    const events = await world.accessAudit.listByTarget("pending-1");
+    const provisioned = events.find((event) => event.eventType === "USER_PROVISIONED");
+    expect(provisioned?.actorUserId).toBe("admin-1");
+    expect(provisioned?.newState).toMatchObject({
+      accountType: "customer",
+      role: "customer",
+      status: "active",
+      implementationId: membership!.implementationId,
+    });
+
+    const decision = await resolveAuthorization({ userId: "pending-1", email: "new@hotel.com" });
+    expect(decision.kind).toBe("customer");
+    expect(landingPath(decision)).toBe("/setup/property");
+  });
+
+  it("rejects provisioning an already active Customer a second time", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { POST } = await import("@/app/api/implementation/users/route");
+    const grant = () =>
+      POST(
+        new NextRequest("http://localhost:3000/api/implementation/users", {
+          method: "POST",
+          body: JSON.stringify({ userId: "pending-1", accountType: "customer" }),
+        }),
+      );
+
+    expect((await grant()).status).toBe(200);
+    const first = await world.customers.findMembershipByUserId("pending-1");
+    const implementationsAfterFirst = (await world.customers.listImplementations()).length;
+
+    asUser("admin-1", "admin@bookmax.ai");
+    const second = await grant();
+    expect(second.status).toBe(400);
+
+    const membership = await world.customers.findMembershipByUserId("pending-1");
+    expect(membership?.id).toBe(first?.id);
+    expect(membership?.implementationId).toBe(first?.implementationId);
+    expect((await world.customers.listImplementations()).length).toBe(implementationsAfterFirst);
+    expect((await world.customers.listMemberships()).filter((row) => row.userId === "pending-1").length).toBe(1);
+  });
+
+  it("a provisioned Customer completes their own first property", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { POST: provision } = await import("@/app/api/implementation/users/route");
+    const granted = await provision(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "POST",
+        body: JSON.stringify({ userId: "pending-1", accountType: "customer" }),
+      }),
+    );
+    const implementationId = (await granted.json()).user.implementationId as string;
+    const membershipBefore = await world.customers.findMembershipByUserId("pending-1");
+
+    asUser("pending-1", "new@hotel.com");
+    const { GET: getContext } = await import("@/app/api/setup/context/route");
+    const opened = await getContext(new NextRequest("http://localhost:3000/api/setup/context"));
+    expect(opened.status).toBe(200);
+    const context = await opened.json();
+    expect(context.implementation.id).toBe(implementationId);
+    expect(context.implementation.status).toBe("started");
+    expect(context.property).toBeNull();
+    expect(context.resumePath).toBe("/setup/property");
+
+    const { POST: saveProperty } = await import("@/app/api/setup/property/route");
+    const saved = await saveProperty(
+      new NextRequest("http://localhost:3000/api/setup/property", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "The Brooklands",
+          city: "Surrey",
+          country: "United Kingdom",
+          contactName: "Jo Mason",
+        }),
+      }),
+    );
+    expect(saved.status).toBe(200);
+    const after = await saved.json();
+    expect(after.property.implementationId).toBe(implementationId);
+    expect(after.property.name).toBe("The Brooklands");
+    expect(after.implementation.status).toBe("property_complete");
+
+    const membershipAfter = await world.customers.findMembershipByUserId("pending-1");
+    expect(membershipAfter).toEqual(membershipBefore);
+  });
+
+  it("keeps a newly provisioned Customer out of every other tenant", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { POST: provision, GET: list } = await import("@/app/api/implementation/users/route");
+    const listed = await list(new NextRequest("http://localhost:3000/api/implementation/users"));
+    const existingImplementationId = (await listed.json()).implementations[0].id as string;
+
+    // An arbitrary existing implementation offered by the client is ignored.
+    asUser("admin-1", "admin@bookmax.ai");
+    const a = await provision(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "pending-1",
+          accountType: "customer",
+          implementationId: existingImplementationId,
+        }),
+      }),
+    );
+    const implementationA = (await a.json()).user.implementationId as string;
+    expect(implementationA).not.toBe(existingImplementationId);
+
+    asUser("admin-1", "admin@bookmax.ai");
+    const b = await provision(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "POST",
+        body: JSON.stringify({ userId: "pending-3", accountType: "customer" }),
+      }),
+    );
+    const implementationB = (await b.json()).user.implementationId as string;
+    expect(implementationB).not.toBe(implementationA);
+
+    // Customer B builds a property so there is something for A to try to reach.
+    asUser("pending-3", "cust-new@hotel.com");
+    const { POST: saveProperty, GET: getProperty } = await import("@/app/api/setup/property/route");
+    const savedB = await saveProperty(
+      new NextRequest("http://localhost:3000/api/setup/property", {
+        method: "POST",
+        body: JSON.stringify({ name: "Tenant B Hotel", contactName: "Bea" }),
+      }),
+    );
+    expect(savedB.status).toBe(200);
+    const propertyB = (await savedB.json()).property.id as string;
+
+    asUser("pending-1", "new@hotel.com");
+    const { GET: getContext } = await import("@/app/api/setup/context/route");
+    const { POST: saveIntake } = await import("@/app/api/setup/intake/route");
+    const { POST: submit } = await import("@/app/api/setup/submit/route");
+
+    for (const implementationId of [implementationB, existingImplementationId]) {
+      expect(
+        (await getContext(new NextRequest(`http://localhost:3000/api/setup/context?implementationId=${implementationId}`)))
+          .status,
+      ).toBe(403);
+      expect(
+        (await getProperty(new NextRequest(`http://localhost:3000/api/setup/property?implementationId=${implementationId}`)))
+          .status,
+      ).toBe(403);
+      expect(
+        (
+          await saveIntake(
+            new NextRequest("http://localhost:3000/api/setup/intake", {
+              method: "POST",
+              body: JSON.stringify({ implementationId, pmsAccessMethod: "api" }),
+            }),
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await submit(
+            new NextRequest("http://localhost:3000/api/setup/submit", {
+              method: "POST",
+              body: JSON.stringify({ implementationId }),
+            }),
+          )
+        ).status,
+      ).toBe(403);
+    }
+
+    expect(
+      (await getProperty(new NextRequest(`http://localhost:3000/api/setup/property?propertyId=${propertyB}`))).status,
+    ).toBe(403);
+
+    // Tenant B's data is untouched and A still only sees its own empty setup.
+    const ownContext = await getContext(new NextRequest("http://localhost:3000/api/setup/context"));
+    expect((await ownContext.json()).implementation.id).toBe(implementationA);
+    expect(await world.customers.findPropertyByImplementationId(implementationB)).not.toBeNull();
+    expect(await world.customers.findPropertyByImplementationId(implementationA)).toBeNull();
+
+    // Neither onboarding customer can enumerate the directory.
+    const { GET: users } = await import("@/app/api/implementation/users/route");
+    expect((await users(new NextRequest("http://localhost:3000/api/implementation/users"))).status).toBe(403);
+  });
+
+  it("converting an identity with no membership to Customer creates a new implementation", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+    const implementationsBefore = await world.customers.listImplementations();
+    const converted = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: "engineer-1", action: "accountType", accountType: "customer" }),
+      }),
+    );
+    expect(converted.status).toBe(200);
+    const body = await converted.json();
+    expect(body.user.accountType).toBe("customer");
+    expect(body.user.implementationId).toBeTruthy();
+    expect(implementationsBefore.some((row) => row.id === body.user.implementationId)).toBe(false);
+    expect(await world.staffStore.findByUserId("engineer-1")).toBeNull();
+
+    const decision = await resolveAuthorization({ userId: "engineer-1", email: "engineer@bookmax.ai" });
+    expect(decision.kind).toBe("customer");
+    expect(landingPath(decision)).toBe("/setup/property");
+  });
+
+  it("an existing Customer is never moved without an explicit target implementation", async () => {
+    const before = await world.customers.findMembershipByUserId("customer-1");
+    const implementationsBefore = await world.customers.listImplementations();
+    const target = implementationsBefore.find((row) => row.id !== before?.implementationId)!.id;
+
+    asUser("admin-1", "admin@bookmax.ai");
+    const { PATCH } = await import("@/app/api/implementation/users/route");
+
+    // No target: the identity keeps the implementation it already belongs to and
+    // no replacement implementation is created for it.
+    const untargeted = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: "customer-1", action: "accountType", accountType: "customer" }),
+      }),
+    );
+    expect(untargeted.status).toBe(200);
+    expect((await untargeted.json()).user.implementationId).toBe(before?.implementationId);
+    expect((await world.customers.listImplementations()).length).toBe(implementationsBefore.length);
+
+    // Explicit reassignment still moves them.
+    asUser("admin-1", "admin@bookmax.ai");
+    const moved = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: "customer-1", action: "assign", implementationId: target }),
+      }),
+    );
+    expect(moved.status).toBe(200);
+    expect((await world.customers.findMembershipByUserId("customer-1"))?.implementationId).toBe(target);
   });
 
   it("27-28. logout clears the session and denies protected routes", async () => {

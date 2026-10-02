@@ -15,7 +15,7 @@ type ConfirmAction =
   | { kind: "enable" }
   | { kind: "impl"; implementationId: string }
   | { kind: "convertInternal"; role: InternalRole }
-  | { kind: "convertCustomer"; implementationId: string };
+  | { kind: "convertCustomer"; implementationId: string | null };
 
 type AuditRow = AccessAuditView & {
   actorUserId?: string;
@@ -334,7 +334,6 @@ export function UsersAccessScreen({
     setMode("provision");
     setAccountType(null);
     setRole(null);
-    setImplementationId(implementations[0]?.id ?? "");
     setAudit([]);
     setConfirm(null);
   }
@@ -351,9 +350,6 @@ export function UsersAccessScreen({
     if (accountType === "internal" && !role) {
       return;
     }
-    if (accountType === "customer" && !implementationId) {
-      return;
-    }
     setBusy(true);
     setError("");
     try {
@@ -362,7 +358,7 @@ export function UsersAccessScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           accountType === "customer"
-            ? { userId: selected.userId, accountType, implementationId }
+            ? { userId: selected.userId, accountType }
             : { userId: selected.userId, accountType, role },
         ),
       });
@@ -435,8 +431,7 @@ export function UsersAccessScreen({
     }
   }
 
-  const provisionReady =
-    accountType === "internal" ? Boolean(role) : accountType === "customer" ? Boolean(implementationId) : false;
+  const provisionReady = accountType === "internal" ? Boolean(role) : accountType === "customer";
 
   const chipOn = (key: FilterKey) => filter === key && !statusFilter;
 
@@ -605,8 +600,6 @@ export function UsersAccessScreen({
                   selected={selected}
                   accountType={accountType}
                   role={role}
-                  implementationId={implementationId}
-                  implementations={implementations}
                   pendingCount={counts.pending}
                   internalEligible={Boolean(selected && isInternalEligibleEmail(selected.email))}
                   onAccountType={(value) => {
@@ -614,7 +607,6 @@ export function UsersAccessScreen({
                     setRole(null);
                   }}
                   onRole={setRole}
-                  onImplementation={setImplementationId}
                 />
               ) : selected && confirm ? (
                 <ConfirmBody user={selected} action={confirm} />
@@ -637,7 +629,7 @@ export function UsersAccessScreen({
                     setConfirm(next === "admin" ? { kind: "convertInternal", role: "admin" } : { kind: "convertInternal", role: next })
                   }
                   onConvertCustomer={(id) => {
-                    setImplementationId(id);
+                    setImplementationId(id ?? "");
                     setConfirm({ kind: "convertCustomer", implementationId: id });
                   }}
                   onPickImplementation={setImplementationId}
@@ -740,24 +732,18 @@ function ProvisionBody({
   selected,
   accountType,
   role,
-  implementationId,
-  implementations,
   pendingCount,
   internalEligible,
   onAccountType,
   onRole,
-  onImplementation,
 }: {
   selected: AccessUserView | null;
   accountType: "internal" | "customer" | null;
   role: InternalRole | null;
-  implementationId: string;
-  implementations: ImplementationOption[];
   pendingCount: number;
   internalEligible: boolean;
   onAccountType: (value: "internal" | "customer") => void;
   onRole: (value: InternalRole) => void;
-  onImplementation: (value: string) => void;
 }) {
   if (!selected) {
     return (
@@ -835,22 +821,15 @@ function ProvisionBody({
       ) : null}
       {accountType === "customer" ? (
         <>
-          <div className="sq">Which implementation?</div>
-          <div className="f" style={{ marginTop: 0 }}>
-            <TraqraSelect
-              id="dimpl"
-              value={implementationId}
-              searchable
-              placeholder="Select the implementation"
-              ariaLabel="Implementation"
-              options={implementations.map((option) => ({
-                value: option.id,
-                label: option.name,
-                desc: option.id,
-              }))}
-              onChange={onImplementation}
-            />
-            <div className="hint">Customer access is scoped to one implementation. They will never see another customer&apos;s setup.</div>
+          <div className="sq">What this creates</div>
+          <div className="idcard">
+            <div className="kd">
+              A new BookMax implementation is created for this person and they are its only member. They start at their
+              own property step and add their property themselves.
+            </div>
+            <div className="hint">
+              Customer access is scoped to that one implementation. They will never see another customer&apos;s setup.
+            </div>
           </div>
         </>
       ) : null}
@@ -880,7 +859,7 @@ function ManageBody({
   onRole: (role: InternalRole) => void;
   onImplementation: (id: string) => void;
   onConvertInternal: (role: InternalRole) => void;
-  onConvertCustomer: (id: string) => void;
+  onConvertCustomer: (id: string | null) => void;
   onPickImplementation: (id: string) => void;
 }) {
   const def = user.role ? ROLEDEF[user.role] : null;
@@ -969,8 +948,7 @@ function ManageBody({
                 <button
                   type="button"
                   className="opt"
-                  disabled={!implementationId}
-                  onClick={() => onConvertCustomer(implementationId)}
+                  onClick={() => onConvertCustomer(implementationId || null)}
                 >
                   <span className="rd" />
                   <span>
@@ -993,7 +971,10 @@ function ManageBody({
                   }))}
                   onChange={onPickImplementation}
                 />
-                <div className="hint">Customer access requires one implementation. Email domain does not grant this.</div>
+                <div className="hint">
+                  Choosing an implementation moves them into that existing setup. With none chosen, a new BookMax
+                  implementation is created for them. Email domain does not grant this.
+                </div>
               </div>
             </>
           )}

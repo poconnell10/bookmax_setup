@@ -26,6 +26,16 @@ function raise(error: { message?: string } | null): never {
 
 export function createSupabaseTransitionStore(client: SupabaseClient): AccessTransitionStore {
   return {
+    async provisionCustomer(input) {
+      const { error } = await client.rpc("access_provision_customer", {
+        p_actor_user_id: input.actorUserId,
+        p_target_user_id: input.targetUserId,
+      });
+      if (error) {
+        raise(error);
+      }
+    },
+
     async changeAccountType(input) {
       const { error } = await client.rpc("access_change_account_type", {
         p_actor_user_id: input.actorUserId,

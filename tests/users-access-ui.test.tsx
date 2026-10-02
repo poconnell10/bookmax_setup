@@ -179,6 +179,49 @@ describe("Users & Access HTML fidelity", () => {
     expect(screen.getByRole("button", { name: "Grant access" })).toBeDisabled();
   });
 
+  it("grants first-time Customer access without an implementation selector", async () => {
+    render(
+      <UsersAccessScreen
+        initialUsers={users}
+        initialImplementations={[{ id: "impl-1", name: "Disney's Coronado Springs" }]}
+      />,
+    );
+    screen.getByRole("button", { name: "Provision" }).click();
+    expect(await screen.findByRole("complementary", { name: "Provision user" })).toBeInTheDocument();
+
+    screen
+      .getByText("Can complete their own BookMax Setup and nothing else.")
+      .closest("button")!
+      .click();
+
+    expect(await screen.findByText(/A new BookMax implementation is created for this person/)).toBeInTheDocument();
+    expect(screen.queryByText("Which implementation?")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Implementation" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Grant access" })).toBeEnabled();
+  });
+
+  it("keeps an explicit implementation target on the Manage reassignment flow", async () => {
+    const customer = users.find((row) => row.userId === "cust-1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ ok: true, audit: [], user: customer }),
+      })),
+    );
+    render(
+      <UsersAccessScreen
+        initialUsers={users}
+        initialImplementations={[{ id: "impl-1", name: "Disney's Coronado Springs" }]}
+      />,
+    );
+    screen.getAllByRole("button", { name: "Manage" })[2].click();
+    expect(await screen.findByRole("complementary", { name: "Manage access" })).toBeInTheDocument();
+    expect(screen.getByText("Implementation")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Implementation" })).toBeInTheDocument();
+    expect(screen.getByText(/Moving this person changes which setup they can open/)).toBeInTheDocument();
+  });
+
   it("does not offer Internal when the pending identity is an external domain", async () => {
     const hotelPending: AccessUserView = {
       ...users[users.length - 1],

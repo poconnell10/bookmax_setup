@@ -8,7 +8,12 @@ export type AccountTypeTransition = {
   targetUserId: string;
 } & (
   | { accountType: "internal"; role: InternalRole }
-  | { accountType: "customer"; implementationId: string }
+  /**
+   * An identity with no membership yet has no implementation to be pointed at,
+   * so the target is optional and one is created. Moving an existing Customer
+   * between implementations still requires an explicit target.
+   */
+  | { accountType: "customer"; implementationId?: string | null }
 );
 
 export type AccessStatusTransition = {
@@ -23,6 +28,7 @@ export type AccessStatusTransition = {
  * transaction.
  */
 export type AccessTransitionStore = {
+  provisionCustomer(input: AccessStatusTransition): Promise<void>;
   changeAccountType(input: AccountTypeTransition): Promise<void>;
   disable(input: AccessStatusTransition): Promise<void>;
   reactivate(input: AccessStatusTransition): Promise<void>;
@@ -45,6 +51,48 @@ export function createMemoryTransitionStore(deps: {
   failAt?: () => TransitionStage | null;
 }): AccessTransitionStore {
   return {
+    async provisionCustomer(input) {
+      const membershipBefore = await deps.customers.findMembershipByUserId(input.targetUserId);
+
+      const failure = deps.failAt?.();
+      if (failure) {
+        throw new InternalError("unavailable", `Injected failure at the ${failure} stage.`);
+      }
+
+      let implementationId = membershipBefore?.implementationId ?? null;
+      if (membershipBefore) {
+        // A membership that was disabled keeps the implementation it already
+        // had. Re-granting access must not strand its existing setup.
+        await deps.customers.updateMembership(input.targetUserId, { status: "active" });
+      } else {
+        // Onboarding access gets its own empty implementation. A new identity is
+        // never attached to another customer's implementation.
+        const implementation = await deps.customers.insertImplementation();
+        implementationId = implementation.id;
+        await deps.customers.insertMembership({
+          implementationId: implementation.id,
+          userId: input.targetUserId,
+        });
+      }
+
+      await deps.audit.insert({
+        eventType: "USER_PROVISIONED",
+        actorUserId: input.actorUserId,
+        targetUserId: input.targetUserId,
+        previousState: {
+          accountType: membershipBefore ? "customer" : "unassigned",
+          role: membershipBefore ? "customer" : null,
+          status: membershipBefore?.status ?? "pending",
+        },
+        newState: {
+          accountType: "customer",
+          role: "customer",
+          status: "active",
+          implementationId,
+        },
+      });
+    },
+
     async changeAccountType(input) {
       const staffBefore = await deps.staff.findByUserId(input.targetUserId);
       const membershipBefore = await deps.customers.findMembershipByUserId(input.targetUserId);
@@ -56,7 +104,7 @@ export function createMemoryTransitionStore(deps: {
         implementationId: membershipBefore?.implementationId ?? null,
       };
 
-      if (input.accountType === "customer") {
+      if (input.accountType === "customer" && input.implementationId) {
         const implementation = await deps.customers.findImplementationById(input.implementationId);
         if (!implementation) {
           throw new InternalError("not_found", "Implementation was not found.");
@@ -91,14 +139,22 @@ export function createMemoryTransitionStore(deps: {
       if (staffBefore) {
         await deps.staff.remove(input.targetUserId);
       }
+      let implementationId = input.implementationId ?? null;
       if (membershipBefore) {
-        await deps.customers.updateMembership(input.targetUserId, {
-          implementationId: input.implementationId,
+        // Reassignment stays explicit: without a target the identity keeps the
+        // implementation it already belongs to.
+        const updated = await deps.customers.updateMembership(input.targetUserId, {
+          implementationId: implementationId ?? undefined,
           status: "active",
         });
+        implementationId = updated.implementationId;
       } else {
+        if (!implementationId) {
+          const implementation = await deps.customers.insertImplementation();
+          implementationId = implementation.id;
+        }
         await deps.customers.insertMembership({
-          implementationId: input.implementationId,
+          implementationId,
           userId: input.targetUserId,
         });
       }
@@ -111,7 +167,7 @@ export function createMemoryTransitionStore(deps: {
           accountType: "customer",
           role: "customer",
           status: "active",
-          implementationId: input.implementationId,
+          implementationId,
         },
       });
     },

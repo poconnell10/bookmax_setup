@@ -41,10 +41,11 @@ export async function POST(request: NextRequest) {
     }
     const service = getAccessDirectoryService();
     if (body.accountType === "customer") {
+      // A client-supplied implementation is ignored. First-time Customer access
+      // always creates the identity's own implementation server-side.
       const user = await service.provision(staff, {
         userId: body.userId,
         accountType: "customer",
-        implementationId: body.implementationId || "",
       });
       return staff.attachAuthCookies(NextResponse.json({ ok: true, user }));
     }
@@ -97,7 +98,7 @@ export async function PATCH(request: NextRequest) {
                   ? {
                       action: "accountType" as const,
                       accountType: "customer" as const,
-                      implementationId: body.implementationId || "",
+                      implementationId: body.implementationId || null,
                     }
                   : null;
     if (!action) {
