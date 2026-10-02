@@ -16,9 +16,14 @@ import { InternalError, type InternalRole, type InternalStaff } from "@/lib/impl
 
 type Actor = InternalStaff & { email?: string };
 
+/**
+ * Customer provisioning takes no implementation. The implementation a customer
+ * owns is created by the grant itself, so a newly verified identity can never
+ * be pointed at another customer's implementation.
+ */
 export type ProvisionInput =
   | { userId: string; accountType: "internal"; role: InternalRole }
-  | { userId: string; accountType: "customer"; implementationId: string };
+  | { userId: string; accountType: "customer" };
 
 export type ManageInput =
   | { action: "role"; role: InternalRole }
@@ -26,7 +31,7 @@ export type ManageInput =
   | { action: "reactivate" }
   | { action: "assign"; implementationId: string }
   | { action: "accountType"; accountType: "internal"; role: InternalRole }
-  | { action: "accountType"; accountType: "customer"; implementationId: string };
+  | { action: "accountType"; accountType: "customer"; implementationId?: string | null };
 
 function assertAdmin(actor: Actor) {
   if (!canAdministerUsers(actor.role) || actor.status !== "active") {
@@ -166,32 +171,11 @@ export function createAccessDirectoryService(deps: {
       return toView(identity);
     }
 
-    const implementation = await deps.customers.findImplementationById(input.implementationId);
-    if (!implementation) {
-      throw new InternalError("not_found", "Implementation was not found.");
-    }
-    if (existingMembership) {
-      await deps.customers.updateMembership(input.userId, {
-        implementationId: input.implementationId,
-        status: "active",
-      });
-    } else {
-      await deps.customers.insertMembership({
-        implementationId: input.implementationId,
-        userId: input.userId,
-      });
-    }
-    await deps.audit.insert({
-      eventType: "USER_PROVISIONED",
+    // The new implementation, the membership and the audit event are one
+    // transition, so a failed grant cannot leave an orphaned implementation.
+    await deps.transitions.provisionCustomer({
       actorUserId: actor.userId,
       targetUserId: input.userId,
-      previousState: { accountType: "unassigned", role: null, status: "pending" },
-      newState: {
-        accountType: "customer",
-        role: "customer",
-        status: "active",
-        implementationId: input.implementationId,
-      },
     });
     return toView(identity);
   }
@@ -280,14 +264,11 @@ export function createAccessDirectoryService(deps: {
           throw new InternalError("forbidden", "The last active Admin cannot be changed.");
         }
       }
-      if (!input.implementationId) {
-        throw new InternalError("invalid_input", "Customer access requires an implementation.");
-      }
       await deps.transitions.changeAccountType({
         actorUserId: actor.userId,
         targetUserId: userId,
         accountType: "customer",
-        implementationId: input.implementationId,
+        implementationId: input.implementationId ?? null,
       });
       return toView(identity);
     }
