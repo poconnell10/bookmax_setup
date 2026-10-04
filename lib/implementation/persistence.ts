@@ -1,6 +1,15 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import type { IntakeState, SubmissionRecord, SubmissionStatus } from "@/types/implementation";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  assertPrototypePersistenceAllowed,
+  prototypeFilePersistenceEnabled,
+} from "@/lib/implementation/persistence-config";
+import { writePrototypeSnapshot } from "@/lib/implementation/prototype-file-store";
+import type {
+  IntakeState,
+  SubmissionRecord,
+  SubmissionStatus,
+} from "@/types/implementation";
 import { SUBMISSION_STATUSES } from "@/types/implementation";
 
 export type CredentialPayload = {
@@ -12,7 +21,9 @@ export type CredentialPayload = {
 export type PersistencePort = {
   saveDraft: (draft: IntakeState) => Promise<{ draftId: string }>;
   loadDraft: (draftId: string) => Promise<IntakeState | null>;
-  submitImplementation: (record: SubmissionRecord) => Promise<{ submissionId: string }>;
+  submitImplementation: (
+    record: SubmissionRecord,
+  ) => Promise<{ submissionId: string }>;
   submitCredentials: (
     draftId: string,
     payload: CredentialPayload,
@@ -25,11 +36,8 @@ const CREDENTIAL_RECEIPTS = new Map<string, true>();
 const RECENT_SUBMITS = new Map<string, { submissionId: string; at: number }>();
 
 const STORE_FILE = join(process.cwd(), "data", "poc-submissions.json");
-const SECRET_KEY = /secret|password|api[_-]?key|private[_-]?key|token|client[_-]?secret/i;
-
-function persistEnabled() {
-  return process.env.VITEST !== "true" && process.env.NODE_ENV !== "test";
-}
+const SECRET_KEY =
+  /secret|password|api[_-]?key|private[_-]?key|token|client[_-]?secret/i;
 
 function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -39,7 +47,9 @@ function withoutSecrets(draft: IntakeState): IntakeState {
   return { ...draft };
 }
 
-function stripSecretFields(details: Record<string, string>): Record<string, string> {
+function stripSecretFields(
+  details: Record<string, string>,
+): Record<string, string> {
   return Object.fromEntries(
     Object.entries(details).filter(([key]) => !SECRET_KEY.test(key)),
   );
@@ -56,7 +66,12 @@ export function publicSubmission(record: SubmissionRecord): SubmissionRecord {
 }
 
 function fingerprint(record: SubmissionRecord): string {
-  return [record.organisation, record.properties.join("|"), record.pms, record.submitted_by]
+  return [
+    record.organisation,
+    record.properties.join("|"),
+    record.pms,
+    record.submitted_by,
+  ]
     .join("::")
     .toLowerCase();
 }
@@ -95,146 +110,190 @@ function seedPrototypeSubmissions() {
   });
 }
 
-function loadStore() {
-  if (!persistEnabled()) {
+async function loadStore() {
+  if (!prototypeFilePersistenceEnabled()) {
     seedPrototypeSubmissions();
     return;
   }
-
   try {
-    const raw = readFileSync(STORE_FILE, "utf8");
-    const parsed = JSON.parse(raw) as { submissions?: SubmissionRecord[] };
-    for (const record of parsed.submissions || []) {
+    const parsed = JSON.parse(await readFile(STORE_FILE, "utf8")) as {
+      submissions: SubmissionRecord[];
+    };
+    if (
+      !Array.isArray(parsed.submissions) ||
+      parsed.submissions.some(
+        (record) =>
+          !record ||
+          typeof record.submission_id !== "string" ||
+          typeof record.submitted_at !== "string" ||
+          !Array.isArray(record.properties),
+      )
+    ) {
+      throw new Error("Invalid prototype persistence file.");
+    }
+    for (const record of parsed.submissions) {
       SUBMISSIONS.set(record.submission_id, publicSubmission(record));
     }
-  } catch {
-    // first run — seed if empty
-  }
-
-  if (SUBMISSIONS.size === 0) {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     seedPrototypeSubmissions();
-    saveStore();
+    await saveStore();
   }
 }
 
-function saveStore() {
-  if (!persistEnabled()) {
-    return;
-  }
-
-  mkdirSync(dirname(STORE_FILE), { recursive: true });
-  writeFileSync(
+async function saveStore() {
+  if (!prototypeFilePersistenceEnabled()) return;
+  await writePrototypeSnapshot(
     STORE_FILE,
-    JSON.stringify({ submissions: [...SUBMISSIONS.values()].map(publicSubmission) }, null, 2),
+    JSON.stringify(
+      { submissions: [...SUBMISSIONS.values()].map(publicSubmission) },
+      null,
+      2,
+    ),
   );
 }
 
 let loaded = false;
+let operations: Promise<unknown> = Promise.resolve();
 
-function ensureLoaded() {
-  if (loaded) {
-    return;
-  }
-  loadStore();
-  loaded = true;
+/** Serialize the entire read/mutate/write transaction, including initial loading. */
+function withStore<T>(operation: () => Promise<T> | T): Promise<T> {
+  assertPrototypePersistenceAllowed();
+  const result = operations.then(async () => {
+    assertPrototypePersistenceAllowed();
+    if (!loaded) {
+      await loadStore();
+      loaded = true;
+    }
+    const previous = new Map(SUBMISSIONS);
+    try {
+      return await operation();
+    } catch (error) {
+      SUBMISSIONS.clear();
+      for (const [id, record] of previous) SUBMISSIONS.set(id, record);
+      throw error;
+    }
+  });
+  operations = result.catch(() => undefined);
+  return result;
 }
 
 export const prototypePersistence: PersistencePort = {
   async saveDraft(draft) {
+    assertPrototypePersistenceAllowed();
     const draftId = draft.draftId || newId("draft");
     DRAFTS.set(draftId, withoutSecrets({ ...draft, draftId }));
     return { draftId };
   },
 
   async loadDraft(draftId) {
+    assertPrototypePersistenceAllowed();
     return DRAFTS.get(draftId) ?? null;
   },
 
   async submitImplementation(record) {
-    ensureLoaded();
-    const key = fingerprint(record);
-    const recent = RECENT_SUBMITS.get(key);
-    if (recent && Date.now() - recent.at < 8000) {
-      return { submissionId: recent.submissionId };
-    }
+    return withStore(async () => {
+      const key = fingerprint(record);
+      const recent = RECENT_SUBMITS.get(key);
+      if (recent && Date.now() - recent.at < 8000) {
+        return { submissionId: recent.submissionId };
+      }
 
-    const submissionId = record.submission_id || newId("BMX");
-    const stored = publicSubmission({
-      ...record,
-      submission_id: submissionId,
-      status: record.status && SUBMISSION_STATUSES.includes(record.status) ? record.status : "Submitted",
+      const submissionId = record.submission_id || newId("BMX");
+      const stored = publicSubmission({
+        ...record,
+        submission_id: submissionId,
+        status:
+          record.status && SUBMISSION_STATUSES.includes(record.status)
+            ? record.status
+            : "Submitted",
+      });
+      SUBMISSIONS.set(submissionId, stored);
+      await saveStore();
+      RECENT_SUBMITS.set(key, { submissionId, at: Date.now() });
+      return { submissionId };
     });
-    SUBMISSIONS.set(submissionId, stored);
-    RECENT_SUBMITS.set(key, { submissionId, at: Date.now() });
-    saveStore();
-    return { submissionId };
   },
 
   async submitCredentials(draftId, payload) {
-    if (!payload.clientId.trim() || !payload.clientSecret.trim() || !payload.applicationKey.trim()) {
-      throw new Error("All credential fields are required together.");
-    }
+    return withStore(async () => {
+      if (
+        !payload.clientId.trim() ||
+        !payload.clientSecret.trim() ||
+        !payload.applicationKey.trim()
+      ) {
+        throw new Error("All credential fields are required together.");
+      }
 
-    CREDENTIAL_RECEIPTS.set(draftId, true);
-    const draft = DRAFTS.get(draftId);
+      const submission = [...SUBMISSIONS.values()].find(
+        (item) => item.submission_id === draftId,
+      );
+      if (submission) {
+        SUBMISSIONS.set(draftId, {
+          ...submission,
+          credentials_status: "received",
+          updated_at: submission.updated_at,
+        });
+        await saveStore();
+      }
 
-    if (draft) {
-      DRAFTS.set(draftId, { ...draft, credentialsStatus: "received" });
-    }
+      CREDENTIAL_RECEIPTS.set(draftId, true);
+      const draft = DRAFTS.get(draftId);
 
-    const submission = [...SUBMISSIONS.values()].find((item) => item.submission_id === draftId);
-    if (submission) {
-      SUBMISSIONS.set(draftId, {
-        ...submission,
-        credentials_status: "received",
-        updated_at: submission.updated_at,
-      });
-      saveStore();
-    }
+      if (draft) {
+        DRAFTS.set(draftId, { ...draft, credentialsStatus: "received" });
+      }
 
-    return { credentialsStatus: "received" };
+      return { credentialsStatus: "received" as const };
+    });
   },
 };
 
-export function listPrototypeSubmissions(): SubmissionRecord[] {
-  ensureLoaded();
-  return [...SUBMISSIONS.values()]
-    .map(publicSubmission)
-    .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at));
+export async function listPrototypeSubmissions(): Promise<SubmissionRecord[]> {
+  return withStore(() => {
+    return [...SUBMISSIONS.values()]
+      .map(publicSubmission)
+      .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at));
+  });
 }
 
-export function getPrototypeSubmission(id: string): SubmissionRecord | undefined {
-  ensureLoaded();
-  const record = SUBMISSIONS.get(id);
-  return record ? publicSubmission(record) : undefined;
+export async function getPrototypeSubmission(
+  id: string,
+): Promise<SubmissionRecord | undefined> {
+  return withStore(() => {
+    const record = SUBMISSIONS.get(id);
+    return record ? publicSubmission(record) : undefined;
+  });
 }
 
-export function updatePrototypeSubmissionStatus(
+export async function updatePrototypeSubmissionStatus(
   id: string,
   status: SubmissionStatus,
-): SubmissionRecord | undefined {
-  ensureLoaded();
-  const current = SUBMISSIONS.get(id);
-  if (!current) {
-    return undefined;
-  }
+): Promise<SubmissionRecord | undefined> {
+  return withStore(async () => {
+    const current = SUBMISSIONS.get(id);
+    if (!current) {
+      return undefined;
+    }
 
-  const updated: SubmissionRecord = {
-    ...current,
-    status,
-    updated_at: new Date().toLocaleString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    }),
-  };
-  SUBMISSIONS.set(id, updated);
-  saveStore();
-  return publicSubmission(updated);
+    const updated: SubmissionRecord = {
+      ...current,
+      status,
+      updated_at: new Date().toLocaleString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+    };
+    SUBMISSIONS.set(id, updated);
+    await saveStore();
+    return publicSubmission(updated);
+  });
 }
 
 export function credentialsWereReceived(draftId: string): boolean {
+  assertPrototypePersistenceAllowed();
   return CREDENTIAL_RECEIPTS.has(draftId);
 }
