@@ -13,6 +13,14 @@ export const dynamic = "force-dynamic";
 const lastSendByEmail = new Map<string, number>();
 const MIN_RESEND_MS = 20_000;
 
+function isNoIdentityError(error: { status?: number; code?: string; message?: string }): boolean {
+  return (
+    error.status === 422 &&
+    error.code === "otp_disabled" &&
+    /signups not allowed/i.test(error.message ?? "")
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json().catch(() => ({}))) as { email?: string };
@@ -38,10 +46,26 @@ export async function POST(request: NextRequest) {
     const { error } = await supabase.auth.signInWithOtp({
       email: parsed.email,
       options: {
-        // New customers are allowed to be created as part of passwordless onboarding.
-        shouldCreateUser: true,
+        // Identities are created only through the invitation flow.
+        shouldCreateUser: false,
       },
     });
+
+    // Must stay indistinguishable from success so the response never reveals
+    // whether an identity exists for this email.
+    if (error && isNoIdentityError(error)) {
+      lastSendByEmail.set(parsed.email, Date.now());
+      logAccess("otp_requested_no_identity");
+      const response = attachAuthCookies(
+        NextResponse.json({
+          ok: true,
+          throttled: false,
+          emailMasked: maskEmail(parsed.email),
+        }),
+      );
+      response.cookies.set(PENDING_EMAIL_COOKIE, parsed.email, pendingEmailCookieOptions());
+      return response;
+    }
 
     if (error) {
       // Keep UX generic, but log the real Supabase failure for diagnosis.

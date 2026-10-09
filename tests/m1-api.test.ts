@@ -73,9 +73,38 @@ describe("M1 OTP API", () => {
     expect(body.emailMasked).toBe("j••••@hotel.com");
     expect(authMocks.signInWithOtp).toHaveBeenCalledWith({
       email: "jane@hotel.com",
-      options: { shouldCreateUser: true },
+      options: { shouldCreateUser: false },
     });
     expect(response.cookies.get(PENDING_EMAIL_COOKIE)?.value).toBe("jane@hotel.com");
+  });
+
+  it("AUTH-001b — email with no identity gets the same response as an existing one", async () => {
+    const { POST } = await import("@/app/api/access/otp/send/route");
+    const send = (email: string) =>
+      POST(
+        new NextRequest("http://localhost:3000/api/access/otp/send", {
+          method: "POST",
+          body: JSON.stringify({ email }),
+        }),
+      );
+
+    authMocks.signInWithOtp.mockResolvedValueOnce({ data: {}, error: null });
+    const existing = await send("known@hotel.com");
+
+    authMocks.signInWithOtp.mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: { name: "AuthApiError", status: 422, code: "otp_disabled", message: "Signups not allowed for otp" },
+    });
+    const unknown = await send("nobody@hotel.com");
+
+    expect(unknown.status).toBe(existing.status);
+    expect(await existing.json()).toEqual({ ok: true, throttled: false, emailMasked: "k••••@hotel.com" });
+    expect(await unknown.json()).toEqual({ ok: true, throttled: false, emailMasked: "n••••@hotel.com" });
+    expect(unknown.cookies.get(PENDING_EMAIL_COOKIE)?.value).toBe("nobody@hotel.com");
+    expect(authMocks.signInWithOtp).toHaveBeenLastCalledWith({
+      email: "nobody@hotel.com",
+      options: { shouldCreateUser: false },
+    });
   });
 
   it("AUTH-002 — does not call Supabase for an invalid email", async () => {
