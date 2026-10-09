@@ -227,7 +227,6 @@ export function createCustomerService(store: CustomerStore) {
 
   function resumePath(context: CustomerSetupContext): string {
     return getSetupResumePath({
-      status: context.implementation.status,
       property: context.property,
       intake: currentIntake(context),
       submitted: Boolean(context.submission),

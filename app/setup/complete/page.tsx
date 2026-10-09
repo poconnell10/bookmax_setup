@@ -18,7 +18,6 @@ export default async function SetupCompletePage() {
     const context = await getCustomerService().getForUser(user.id);
     redirect(
       getSetupResumePath({
-        status: context.implementation.status,
         property: context.property,
         intake: context.intake?.payload ?? emptySetupIntake(),
         submitted: Boolean(context.submission),

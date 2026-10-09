@@ -18,6 +18,12 @@ function raise(error: { message?: string } | null): never {
   if (message.includes("not_found:")) {
     throw new InternalError("not_found", "That record was not found.");
   }
+  if (message.includes("internal_account:")) {
+    throw new InternalError("invalid_input", "This user has an internal account.");
+  }
+  if (message.includes("property_exists:")) {
+    throw new InternalError("invalid_input", "This customer already has a property.");
+  }
   if (message.includes("invalid_input:")) {
     throw new InternalError("invalid_input", "That access change is not supported.");
   }
@@ -27,9 +33,14 @@ function raise(error: { message?: string } | null): never {
 export function createSupabaseTransitionStore(client: SupabaseClient): AccessTransitionStore {
   return {
     async provisionCustomer(input) {
+      // Property arguments are sent only when present, so a provision without a
+      // property also resolves against a database still on the (uuid, uuid) signature.
       const { error } = await client.rpc("access_provision_customer", {
         p_actor_user_id: input.actorUserId,
         p_target_user_id: input.targetUserId,
+        ...(input.property
+          ? { p_property_name: input.property.name, p_contact_name: input.property.contactName }
+          : {}),
       });
       if (error) {
         raise(error);
