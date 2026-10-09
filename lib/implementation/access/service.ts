@@ -9,7 +9,7 @@ import type {
   AccessUserView,
   ImplementationOption,
 } from "@/lib/implementation/access/types";
-import type { AccessTransitionStore } from "@/lib/implementation/access/transition-store";
+import type { AccessTransitionStore, ProvisionProperty } from "@/lib/implementation/access/transition-store";
 import type { CustomerStore } from "@/lib/implementation/customer/store";
 import type { InternalStaffStore } from "@/lib/implementation/internal/staff-store";
 import { InternalError, type InternalRole, type InternalStaff } from "@/lib/implementation/internal/types";
@@ -23,7 +23,7 @@ type Actor = InternalStaff & { email?: string };
  */
 export type ProvisionInput =
   | { userId: string; accountType: "internal"; role: InternalRole }
-  | { userId: string; accountType: "customer" };
+  | { userId: string; accountType: "customer"; property?: ProvisionProperty | null };
 
 export type ManageInput =
   | { action: "role"; role: InternalRole }
@@ -171,11 +171,28 @@ export function createAccessDirectoryService(deps: {
       return toView(identity);
     }
 
-    // The new implementation, the membership and the audit event are one
-    // transition, so a failed grant cannot leave an orphaned implementation.
+    // Any staff row, active or disabled, outranks a membership in
+    // resolveAuthorization, so a Customer grant here would be unreachable.
+    if (existingStaff) {
+      throw new InternalError("invalid_input", "This user has an internal account.");
+    }
+
+    let property: ProvisionProperty | null = null;
+    if (input.property) {
+      const name = input.property.name.trim();
+      const contactName = input.property.contactName.trim();
+      if (!name || !contactName) {
+        throw new InternalError("invalid_input", "Enter both the property name and the contact name.");
+      }
+      property = { name, contactName };
+    }
+
+    // The new implementation, the membership, the optional property and the
+    // audit event are one transition, so a failed grant leaves nothing behind.
     await deps.transitions.provisionCustomer({
       actorUserId: actor.userId,
       targetUserId: input.userId,
+      property,
     });
     return toView(identity);
   }

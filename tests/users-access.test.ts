@@ -1390,6 +1390,165 @@ describe("Users & Access authorization", () => {
     expect(landingPath(decision)).toBe("/setup/property");
   });
 
+  it("an Admin can create the customer's property while provisioning, and the customer resumes at PMS", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { POST: provision } = await import("@/app/api/implementation/users/route");
+    const granted = await provision(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "pending-3",
+          accountType: "customer",
+          property: { name: "  Hotel Admin-Made ", contactName: " Cara " },
+        }),
+      }),
+    );
+    expect(granted.status).toBe(200);
+    const implementationId = (await granted.json()).user.implementationId as string;
+
+    const property = await world.customers.findPropertyByImplementationId(implementationId);
+    expect(property).toMatchObject({ name: "Hotel Admin-Made", contactName: "Cara" });
+    expect((await world.customers.findImplementationById(implementationId))?.status).toBe("property_complete");
+    expect(await world.customers.findIntakeByImplementationId(implementationId)).toBeNull();
+    const events = await world.accessAudit.listByTarget("pending-3");
+    expect(events.at(-1)).toMatchObject({
+      eventType: "USER_PROVISIONED",
+      newState: { implementationId, propertyCreated: true },
+    });
+
+    // Convergence: the customer signs in and resumes at the first unfinished step.
+    const verified = await verifyOtpFor("pending-3", "cust-new@hotel.com");
+    expect((await verified.json()).resumePath).toBe("/setup/pms");
+
+    // Saving the property step through self-serve updates the same row.
+    asUser("pending-3", "cust-new@hotel.com");
+    const { POST: saveProperty } = await import("@/app/api/setup/property/route");
+    const saved = await saveProperty(
+      new NextRequest("http://localhost:3000/api/setup/property", {
+        method: "POST",
+        body: JSON.stringify({ name: "Hotel Customer-Edited", contactName: "Cara" }),
+      }),
+    );
+    expect(saved.status).toBe(200);
+    expect((await saved.json()).property.id).toBe(property!.id);
+    expect((await world.customers.findPropertyByImplementationId(implementationId))?.name).toBe(
+      "Hotel Customer-Edited",
+    );
+  });
+
+  it("a Customer provisioned without a property still starts at the property step", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { POST: provision } = await import("@/app/api/implementation/users/route");
+    const granted = await provision(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "POST",
+        body: JSON.stringify({ userId: "pending-3", accountType: "customer" }),
+      }),
+    );
+    expect(granted.status).toBe(200);
+    const implementationId = (await granted.json()).user.implementationId as string;
+    expect(await world.customers.findPropertyByImplementationId(implementationId)).toBeNull();
+    expect((await world.customers.findImplementationById(implementationId))?.status).toBe("started");
+
+    const verified = await verifyOtpFor("pending-3", "cust-new@hotel.com");
+    expect((await verified.json()).resumePath).toBe("/setup/property");
+  });
+
+  it.each([
+    { name: "Hotel", contactName: "" },
+    { name: "   ", contactName: "Cara" },
+  ])("a partial property ($name / $contactName) is rejected and nothing is created", async (property) => {
+    const implementationsBefore = await world.customers.listImplementations();
+    asUser("admin-1", "admin@bookmax.ai");
+    const { POST: provision } = await import("@/app/api/implementation/users/route");
+    const rejected = await provision(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "POST",
+        body: JSON.stringify({ userId: "pending-3", accountType: "customer", property }),
+      }),
+    );
+    expect(rejected.status).toBe(400);
+    expect(await world.customers.findMembershipByUserId("pending-3")).toBeNull();
+    expect((await world.customers.listImplementations()).length).toBe(implementationsBefore.length);
+  });
+
+  it("an identity with a disabled internal account cannot be provisioned as a Customer", async () => {
+    const implementationsBefore = await world.customers.listImplementations();
+    asUser("admin-1", "admin@bookmax.ai");
+    const { POST: provision } = await import("@/app/api/implementation/users/route");
+    const rejected = await provision(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "disabled-1",
+          accountType: "customer",
+          property: { name: "Hotel", contactName: "Dee" },
+        }),
+      }),
+    );
+    expect(rejected.status).toBe(400);
+    expect((await rejected.json()).error).toBe("This user has an internal account.");
+    expect(await world.customers.findMembershipByUserId("disabled-1")).toBeNull();
+    expect((await world.customers.listImplementations()).length).toBe(implementationsBefore.length);
+    const events = await world.accessAudit.listByTarget("disabled-1");
+    expect(events.some((event) => event.eventType === "USER_PROVISIONED")).toBe(false);
+  });
+
+  it("re-provisioning a disabled Customer who already has a property with a new property is refused", async () => {
+    asUser("admin-1", "admin@bookmax.ai");
+    const { POST: provision, PATCH } = await import("@/app/api/implementation/users/route");
+    const disabled = await PATCH(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: "customer-1", action: "disable" }),
+      }),
+    );
+    expect(disabled.status).toBe(200);
+    const membership = await world.customers.findMembershipByUserId("customer-1");
+    const propertyBefore = await world.customers.findPropertyByImplementationId(membership!.implementationId);
+
+    asUser("admin-1", "admin@bookmax.ai");
+    const rejected = await provision(
+      new NextRequest("http://localhost:3000/api/implementation/users", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "customer-1",
+          accountType: "customer",
+          property: { name: "Second Hotel", contactName: "Priya" },
+        }),
+      }),
+    );
+    expect(rejected.status).toBe(400);
+    expect((await rejected.json()).error).toBe("This customer already has a property.");
+    expect((await world.customers.findMembershipByUserId("customer-1"))?.status).toBe("disabled");
+    expect(await world.customers.findPropertyByImplementationId(membership!.implementationId)).toEqual(
+      propertyBefore,
+    );
+  });
+
+  it.each(["status", "audit"] as const)(
+    "a provision-with-property failure at the %s stage leaves nothing behind",
+    async (stage) => {
+      const implementationsBefore = await world.customers.listImplementations();
+      world.failAt.stage = stage;
+      asUser("admin-1", "admin@bookmax.ai");
+      const { POST: provision } = await import("@/app/api/implementation/users/route");
+      const failed = await provision(
+        new NextRequest("http://localhost:3000/api/implementation/users", {
+          method: "POST",
+          body: JSON.stringify({
+            userId: "pending-3",
+            accountType: "customer",
+            property: { name: "Hotel", contactName: "Cara" },
+          }),
+        }),
+      );
+      expect(failed.status).toBe(503);
+      expect(await world.customers.findMembershipByUserId("pending-3")).toBeNull();
+      expect((await world.customers.listImplementations()).length).toBe(implementationsBefore.length);
+    },
+  );
+
   it("an existing Customer is never moved without an explicit target implementation", async () => {
     const before = await world.customers.findMembershipByUserId("customer-1");
     const implementationsBefore = await world.customers.listImplementations();

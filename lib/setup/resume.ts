@@ -1,14 +1,17 @@
 import { connectStepComplete, pmsSelectionComplete } from "@/lib/setup/intake";
 import type { SetupIntakePayload } from "@/lib/setup/intake";
-import type { CustomerProperty, ImplementationStatus } from "@/lib/implementation/customer/types";
+import type { CustomerProperty } from "@/lib/implementation/customer/types";
 
+/**
+ * Routes on which rows exist, never on implementations.status, so a property
+ * created by an Admin and one saved by the customer resume identically.
+ */
 export function getSetupResumePath(input: {
-  status: ImplementationStatus;
   property: CustomerProperty | null;
   intake: SetupIntakePayload;
   submitted: boolean;
 }): string {
-  if (input.submitted || input.status === "submitted") {
+  if (input.submitted) {
     return "/setup/thanks";
   }
   if (!input.property) {

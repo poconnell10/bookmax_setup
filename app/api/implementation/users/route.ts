@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
       accountType?: string;
       role?: string;
       implementationId?: string;
+      property?: { name?: unknown; contactName?: unknown } | null;
     };
     if (!body.userId) {
       return NextResponse.json(
@@ -43,9 +44,16 @@ export async function POST(request: NextRequest) {
     if (body.accountType === "customer") {
       // A client-supplied implementation is ignored. First-time Customer access
       // always creates the identity's own implementation server-side.
+      const property = body.property
+        ? {
+            name: typeof body.property.name === "string" ? body.property.name : "",
+            contactName: typeof body.property.contactName === "string" ? body.property.contactName : "",
+          }
+        : null;
       const user = await service.provision(staff, {
         userId: body.userId,
         accountType: "customer",
+        property,
       });
       return staff.attachAuthCookies(NextResponse.json({ ok: true, user }));
     }

@@ -21,6 +21,19 @@ export type AccessStatusTransition = {
   targetUserId: string;
 };
 
+export type ProvisionProperty = {
+  name: string;
+  contactName: string;
+};
+
+/**
+ * When a property is supplied, the implementation, membership, properties row
+ * and audit event are one transition. PMS/POS details are never part of it.
+ */
+export type ProvisionCustomerTransition = AccessStatusTransition & {
+  property?: ProvisionProperty | null;
+};
+
 /**
  * An access change is a single authorization transition, not a sequence of
  * writes. The state change and its audit event must commit together or not at
@@ -28,7 +41,7 @@ export type AccessStatusTransition = {
  * transaction.
  */
 export type AccessTransitionStore = {
-  provisionCustomer(input: AccessStatusTransition): Promise<void>;
+  provisionCustomer(input: ProvisionCustomerTransition): Promise<void>;
   changeAccountType(input: AccountTypeTransition): Promise<void>;
   disable(input: AccessStatusTransition): Promise<void>;
   reactivate(input: AccessStatusTransition): Promise<void>;
@@ -53,6 +66,17 @@ export function createMemoryTransitionStore(deps: {
   return {
     async provisionCustomer(input) {
       const membershipBefore = await deps.customers.findMembershipByUserId(input.targetUserId);
+      const staffBefore = await deps.staff.findByUserId(input.targetUserId);
+      if (staffBefore) {
+        throw new InternalError("invalid_input", "This user has an internal account.");
+      }
+      if (
+        input.property &&
+        membershipBefore &&
+        (await deps.customers.findPropertyByImplementationId(membershipBefore.implementationId))
+      ) {
+        throw new InternalError("invalid_input", "This customer already has a property.");
+      }
 
       const failure = deps.failAt?.();
       if (failure) {
@@ -75,6 +99,17 @@ export function createMemoryTransitionStore(deps: {
         });
       }
 
+      if (input.property) {
+        await deps.customers.upsertProperty(implementationId!, {
+          name: input.property.name,
+          contactName: input.property.contactName,
+        });
+        const implementation = await deps.customers.findImplementationById(implementationId!);
+        if (implementation?.status === "started") {
+          await deps.customers.updateImplementationStatus(implementationId!, "property_complete");
+        }
+      }
+
       await deps.audit.insert({
         eventType: "USER_PROVISIONED",
         actorUserId: input.actorUserId,
@@ -89,6 +124,7 @@ export function createMemoryTransitionStore(deps: {
           role: "customer",
           status: "active",
           implementationId,
+          propertyCreated: Boolean(input.property),
         },
       });
     },

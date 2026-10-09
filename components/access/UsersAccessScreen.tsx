@@ -223,6 +223,8 @@ export function UsersAccessScreen({
   const [mode, setMode] = useState<DrawerMode>("closed");
   const [accountType, setAccountType] = useState<"internal" | "customer" | null>(null);
   const [role, setRole] = useState<InternalRole | null>(null);
+  const [propertyName, setPropertyName] = useState("");
+  const [contactName, setContactName] = useState("");
   const [implementationId, setImplementationId] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmAction | null>(null);
@@ -334,6 +336,8 @@ export function UsersAccessScreen({
     setMode("provision");
     setAccountType(null);
     setRole(null);
+    setPropertyName("");
+    setContactName("");
     setAudit([]);
     setConfirm(null);
   }
@@ -358,7 +362,11 @@ export function UsersAccessScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           accountType === "customer"
-            ? { userId: selected.userId, accountType }
+            ? {
+                userId: selected.userId,
+                accountType,
+                property: propertyName.trim() ? { name: propertyName, contactName } : null,
+              }
             : { userId: selected.userId, accountType, role },
         ),
       });
@@ -431,7 +439,9 @@ export function UsersAccessScreen({
     }
   }
 
-  const provisionReady = accountType === "internal" ? Boolean(role) : accountType === "customer";
+  const propertyComplete = Boolean(propertyName.trim()) === Boolean(contactName.trim());
+  const provisionReady =
+    accountType === "internal" ? Boolean(role) : accountType === "customer" && propertyComplete;
 
   const chipOn = (key: FilterKey) => filter === key && !statusFilter;
 
@@ -607,6 +617,10 @@ export function UsersAccessScreen({
                     setRole(null);
                   }}
                   onRole={setRole}
+                  propertyName={propertyName}
+                  contactName={contactName}
+                  onPropertyName={setPropertyName}
+                  onContactName={setContactName}
                 />
               ) : selected && confirm ? (
                 <ConfirmBody user={selected} action={confirm} />
@@ -736,6 +750,10 @@ function ProvisionBody({
   internalEligible,
   onAccountType,
   onRole,
+  propertyName,
+  contactName,
+  onPropertyName,
+  onContactName,
 }: {
   selected: AccessUserView | null;
   accountType: "internal" | "customer" | null;
@@ -744,6 +762,10 @@ function ProvisionBody({
   internalEligible: boolean;
   onAccountType: (value: "internal" | "customer") => void;
   onRole: (value: InternalRole) => void;
+  propertyName: string;
+  contactName: string;
+  onPropertyName: (value: string) => void;
+  onContactName: (value: string) => void;
 }) {
   if (!selected) {
     return (
@@ -824,11 +846,35 @@ function ProvisionBody({
           <div className="sq">What this creates</div>
           <div className="idcard">
             <div className="kd">
-              A new BookMax implementation is created for this person and they are its only member. They start at their
-              own property step and add their property themselves.
+              A new BookMax implementation is created for this person and they are its only member.{" "}
+              {propertyName.trim()
+                ? "Their property is created now, and they start at the PMS step."
+                : "They start at their own property step and add their property themselves."}
             </div>
             <div className="hint">
               Customer access is scoped to that one implementation. They will never see another customer&apos;s setup.
+            </div>
+          </div>
+          <div className="sq">Property · optional</div>
+          <div className="f">
+            <label htmlFor="prov-pname">Property name</label>
+            <input
+              id="prov-pname"
+              placeholder="e.g. The Gritti Palace"
+              value={propertyName}
+              onChange={(event) => onPropertyName(event.target.value)}
+            />
+          </div>
+          <div className="f" style={{ marginTop: 10 }}>
+            <label htmlFor="prov-cname">Contact name</label>
+            <input
+              id="prov-cname"
+              placeholder="e.g. Maria Rossi"
+              value={contactName}
+              onChange={(event) => onContactName(event.target.value)}
+            />
+            <div className="hint">
+              Leave both empty to let the customer add their property. PMS and POS are connected by the customer.
             </div>
           </div>
         </>

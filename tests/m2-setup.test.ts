@@ -91,7 +91,13 @@ describe("M2 setup intake", () => {
   it("RESUME-001 — resume path advances through setup stages", () => {
     expect(
       getSetupResumePath({
-        status: "property_complete",
+        property: null,
+        intake: emptySetupIntake(),
+        submitted: false,
+      }),
+    ).toBe("/setup/property");
+    expect(
+      getSetupResumePath({
         property,
         intake: emptySetupIntake(),
         submitted: false,
@@ -99,7 +105,6 @@ describe("M2 setup intake", () => {
     ).toBe("/setup/pms");
     expect(
       getSetupResumePath({
-        status: "property_complete",
         property,
         intake: { ...emptySetupIntake(), pmsId: "mews" },
         submitted: false,
@@ -107,7 +112,6 @@ describe("M2 setup intake", () => {
     ).toBe("/setup/review");
     expect(
       getSetupResumePath({
-        status: "submitted",
         property,
         intake: { ...emptySetupIntake(), pmsId: "mews" },
         submitted: true,
