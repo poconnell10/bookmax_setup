@@ -1,7 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UsersAccessScreen } from "@/components/access/UsersAccessScreen";
 import type { AccessUserView } from "@/lib/implementation/access/types";
+
+const routerPush = vi.hoisted(() => vi.fn());
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: routerPush, replace: vi.fn() }),
+}));
 
 const users: AccessUserView[] = [
   {
@@ -16,6 +21,7 @@ const users: AccessUserView[] = [
     firstSignInAt: "2026-06-12T08:00:00.000Z",
     implementationId: null,
     implementationName: null,
+    implementationSetup: null,
     provisionedBy: null,
   },
   {
@@ -30,6 +36,7 @@ const users: AccessUserView[] = [
     firstSignInAt: "2026-07-02T08:00:00.000Z",
     implementationId: null,
     implementationName: null,
+    implementationSetup: null,
     provisionedBy: "admin-1",
   },
   {
@@ -44,6 +51,7 @@ const users: AccessUserView[] = [
     firstSignInAt: "2026-08-01T08:00:00.000Z",
     implementationId: "impl-1",
     implementationName: "Disney's Coronado Springs",
+    implementationSetup: "draft",
     provisionedBy: "admin-1",
   },
   {
@@ -58,6 +66,7 @@ const users: AccessUserView[] = [
     firstSignInAt: "2026-08-02T08:00:00.000Z",
     implementationId: "impl-1",
     implementationName: "Hotel Northgate",
+    implementationSetup: "draft",
     provisionedBy: "admin-1",
   },
   {
@@ -72,6 +81,7 @@ const users: AccessUserView[] = [
     firstSignInAt: "2026-09-08T10:00:00.000Z",
     implementationId: null,
     implementationName: null,
+    implementationSetup: null,
     provisionedBy: null,
   },
 ];
@@ -200,26 +210,95 @@ describe("Users & Access HTML fidelity", () => {
     expect(screen.getByRole("button", { name: "Grant access" })).toBeEnabled();
   });
 
-  it("keeps an explicit implementation target on the Manage reassignment flow", async () => {
+  it("attaches a Customer to an unassigned property from the Manage drawer", async () => {
+    const customer = { ...users[3], implementationSetup: "empty" as const, implementationName: null };
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<{ ok: boolean; json: () => Promise<unknown> }>>(
+      async () => ({
+        ok: true,
+        json: async () => ({ ok: true, audit: [], user: customer, users: [customer] }),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <UsersAccessScreen
+        initialUsers={[customer]}
+        initialImplementations={[]}
+        initialAttachable={{
+          options: [
+            { id: "11111111-1111-4111-8111-111111111111", propertyName: "Brooklands Hotel", createdAt: "2026-10-01T00:00:00.000Z" },
+            { id: "22222222-2222-4222-8222-222222222222", propertyName: null, createdAt: "2026-10-02T00:00:00.000Z" },
+          ],
+          hiddenCount: 16,
+        }}
+      />,
+    );
+    screen.getByRole("button", { name: "Manage" }).click();
+    expect(await screen.findByRole("complementary", { name: "Manage access" })).toBeInTheDocument();
+    expect(screen.getByText(/isn’t linked to a property yet/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Attach to an existing property/ }));
+    expect(screen.getByText("2 properties with no customer attached")).toBeInTheDocument();
+    expect(screen.getByText(/16 properties that already belong to a customer are hidden/)).toBeInTheDocument();
+    expect(screen.getByText(/Untitled property · created/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search property name" }), { target: { value: "zzz" } });
+    expect(screen.getByText(/No unassigned property matches/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search property name" }), { target: { value: "brook" } });
+    fireEvent.click(screen.getByRole("option", { name: /Brooklands Hotel/ }));
+
+    expect(screen.getByText(/becomes the customer for/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Attach property" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) =>
+            url === "/api/implementation/users" &&
+            init?.method === "PATCH" &&
+            JSON.parse(String(init.body)).action === "assign" &&
+            JSON.parse(String(init.body)).implementationId === "11111111-1111-4111-8111-111111111111",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("opens the real property setup page when an Admin creates a new implementation", async () => {
+    const customer = {
+      ...users[3],
+      userId: "33333333-3333-4333-8333-333333333333",
+      implementationId: "44444444-4444-4444-8444-444444444444",
+      implementationSetup: "empty" as const,
+      implementationName: null,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, audit: [], user: customer }) })),
+    );
+    routerPush.mockReset();
+    render(<UsersAccessScreen initialUsers={[customer]} initialImplementations={[]} />);
+    screen.getByRole("button", { name: "Manage" }).click();
+    expect(await screen.findByRole("complementary", { name: "Manage access" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Create a new implementation/ }));
+    await waitFor(() =>
+      expect(routerPush).toHaveBeenCalledWith(
+        "/setup/property?customer=33333333-3333-4333-8333-333333333333&implementation=44444444-4444-4444-8444-444444444444",
+      ),
+    );
+  });
+
+  it("shows a linked Customer's implementation with Change implementation", async () => {
     const customer = users.find((row) => row.userId === "cust-1");
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({
-        ok: true,
-        json: async () => ({ ok: true, audit: [], user: customer }),
-      })),
+      vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, audit: [], user: customer }) })),
     );
-    render(
-      <UsersAccessScreen
-        initialUsers={users}
-        initialImplementations={[{ id: "impl-1", name: "Disney's Coronado Springs" }]}
-      />,
-    );
+    render(<UsersAccessScreen initialUsers={users} initialImplementations={[]} />);
     screen.getAllByRole("button", { name: "Manage" })[2].click();
     expect(await screen.findByRole("complementary", { name: "Manage access" })).toBeInTheDocument();
-    expect(screen.getByText("Implementation")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Implementation" })).toBeInTheDocument();
-    expect(screen.getByText(/Moving this person changes which setup they can open/)).toBeInTheDocument();
+    expect(screen.getByText("Draft · started")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Continue in setup/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Change implementation" }));
+    expect(screen.getByRole("button", { name: /Attach to an existing property/ })).toBeInTheDocument();
+    expect(screen.getByText(/Their current setup is kept/)).toBeInTheDocument();
   });
 
   it("does not offer Internal when the pending identity is an external domain", async () => {

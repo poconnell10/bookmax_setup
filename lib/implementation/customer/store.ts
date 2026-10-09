@@ -20,6 +20,7 @@ export type CustomerStore = {
   findPropertyByImplementationId(implementationId: string): Promise<CustomerProperty | null>;
   findPropertyById(id: string): Promise<CustomerProperty | null>;
   insertImplementation(): Promise<CustomerImplementation>;
+  deleteImplementation(id: string): Promise<void>;
   insertMembership(input: {
     implementationId: string;
     userId: string;

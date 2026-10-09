@@ -35,6 +35,20 @@ export type ProvisionCustomerTransition = AccessStatusTransition & {
 };
 
 /**
+ * A non-null implementationId attaches the Customer to an implementation that
+ * has no members. Null starts a fresh one, reusing the current implementation
+ * when it is still empty.
+ */
+export type CustomerImplementationTransition = AccessStatusTransition & {
+  implementationId: string | null;
+};
+
+export type CustomerImplementationResult = {
+  mode: "attached" | "created" | "reused";
+  implementationId: string;
+};
+
+/**
  * An access change is a single authorization transition, not a sequence of
  * writes. The state change and its audit event must commit together or not at
  * all, so each is expressed as one operation and executed inside one database
@@ -45,6 +59,7 @@ export type AccessTransitionStore = {
   changeAccountType(input: AccountTypeTransition): Promise<void>;
   disable(input: AccessStatusTransition): Promise<void>;
   reactivate(input: AccessStatusTransition): Promise<void>;
+  setCustomerImplementation(input: CustomerImplementationTransition): Promise<CustomerImplementationResult>;
 };
 
 /** Stage names the in-memory double can be told to fail at. */
@@ -275,6 +290,69 @@ export function createMemoryTransitionStore(deps: {
         previousState: { status: "disabled" },
         newState: { status: "active", role: staff?.role ?? "customer" },
       });
+    },
+
+    async setCustomerImplementation(input) {
+      if (await deps.staff.findByUserId(input.targetUserId)) {
+        throw new InternalError("invalid_input", "This user has an internal account.");
+      }
+      const membership = await deps.customers.findMembershipByUserId(input.targetUserId);
+      if (!membership || membership.status !== "active") {
+        throw new InternalError("invalid_input", "Only an active Customer can change implementation.");
+      }
+      const current = membership.implementationId;
+      const members = await deps.customers.listMemberships();
+
+      async function isEmpty(implementationId: string, ignoreMembershipId: string | null) {
+        const [property, intake, submission] = await Promise.all([
+          deps.customers.findPropertyByImplementationId(implementationId),
+          deps.customers.findIntakeByImplementationId(implementationId),
+          deps.customers.findSubmissionByImplementationId(implementationId),
+        ]);
+        const others = members.some(
+          (row) => row.implementationId === implementationId && row.id !== ignoreMembershipId,
+        );
+        return !property && !intake && !submission && !others;
+      }
+
+      let mode: CustomerImplementationResult["mode"];
+      if (input.implementationId) {
+        if (input.implementationId === current) {
+          throw new InternalError("invalid_input", "This customer is already attached to that implementation.");
+        }
+        if (!(await deps.customers.findImplementationById(input.implementationId))) {
+          throw new InternalError("not_found", "That record was not found.");
+        }
+        if (members.some((row) => row.implementationId === input.implementationId)) {
+          throw new InternalError("invalid_input", "That property already belongs to a customer.");
+        }
+        mode = "attached";
+      } else {
+        if (await isEmpty(current, membership.id)) {
+          return { mode: "reused", implementationId: current };
+        }
+        mode = "created";
+      }
+      const deletePrevious = await isEmpty(current, membership.id);
+
+      const failure = deps.failAt?.();
+      if (failure) {
+        throw new InternalError("unavailable", `Injected failure at the ${failure} stage.`);
+      }
+
+      const target = input.implementationId ?? (await deps.customers.insertImplementation()).id;
+      await deps.customers.updateMembership(input.targetUserId, { implementationId: target });
+      if (deletePrevious) {
+        await deps.customers.deleteImplementation(current);
+      }
+      await deps.audit.insert({
+        eventType: "CUSTOMER_ASSIGNMENT_CHANGED",
+        actorUserId: input.actorUserId,
+        targetUserId: input.targetUserId,
+        previousState: { implementationId: current },
+        newState: { implementationId: target, mode, previousImplementationDeleted: deletePrevious },
+      });
+      return { mode, implementationId: target };
     },
   };
 }

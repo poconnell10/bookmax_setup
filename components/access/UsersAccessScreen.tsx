@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { TraqraSelect } from "@/components/setup/TraqraSelect";
 import { isInternalEligibleEmail } from "@/lib/access/internal-eligibility";
-import type { AccessAuditView, AccessUserView, ImplementationOption } from "@/lib/implementation/access/types";
+import type {
+  AccessAuditView,
+  AccessUserView,
+  AttachableImplementation,
+  AttachableImplementations,
+  ImplementationOption,
+} from "@/lib/implementation/access/types";
 import type { InternalRole } from "@/lib/implementation/internal/types";
 
 type FilterKey = "" | "pending" | "customers" | "internal" | "engineers" | "admins" | "viewer";
@@ -13,7 +20,6 @@ type ConfirmAction =
   | { kind: "promote"; role: "admin" }
   | { kind: "disable" }
   | { kind: "enable" }
-  | { kind: "impl"; implementationId: string }
   | { kind: "convertInternal"; role: InternalRole }
   | { kind: "convertCustomer"; implementationId: string | null };
 
@@ -61,7 +67,17 @@ const AULABEL: Record<string, string> = {
   ACCESS_REACTIVATED: "Access reactivated",
   CUSTOMER_ASSIGNMENT_CHANGED: "Implementation changed",
   ACCOUNT_TYPE_CHANGED: "Account type changed",
+  CUSTOMER_PROPERTY_SAVED: "Property saved by Admin",
 };
+
+const ASSIGNMENT_MODE: Record<string, string> = {
+  attached: "attached to an existing property",
+  created: "new implementation started",
+};
+
+function propertySetupHref(userId: string, implementationId: string) {
+  return `/setup/property?${new URLSearchParams({ customer: userId, implementation: implementationId })}`;
+}
 
 const ACCOUNT_OPTIONS = [
   { v: "", label: "All account types" },
@@ -207,20 +223,29 @@ function IdentityCard({
 export function UsersAccessScreen({
   initialUsers,
   initialImplementations,
+  initialAttachable = { options: [], hiddenCount: 0 },
+  initialManageUserId = null,
 }: {
   initialUsers: AccessUserView[];
   initialImplementations: ImplementationOption[];
+  initialAttachable?: AttachableImplementations;
+  initialManageUserId?: string | null;
 }) {
+  const router = useRouter();
+  const initialManageRow = initialManageUserId
+    ? (initialUsers.find((item) => item.userId === initialManageUserId) ?? null)
+    : null;
   const [users, setUsers] = useState<AccessUserView[]>(initialUsers);
   const [implementations, setImplementations] = useState<ImplementationOption[]>(initialImplementations);
+  const [attachable, setAttachable] = useState<AttachableImplementations>(initialAttachable);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterKey>("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [selected, setSelected] = useState<AccessUserView | null>(null);
+  const [selected, setSelected] = useState<AccessUserView | null>(initialManageRow);
   const [audit, setAudit] = useState<AuditRow[]>([]);
-  const [mode, setMode] = useState<DrawerMode>("closed");
+  const [mode, setMode] = useState<DrawerMode>(initialManageRow ? "manage" : "closed");
   const [accountType, setAccountType] = useState<"internal" | "customer" | null>(null);
   const [role, setRole] = useState<InternalRole | null>(null);
   const [propertyName, setPropertyName] = useState("");
@@ -255,6 +280,7 @@ export function UsersAccessScreen({
       error?: string;
       users?: AccessUserView[];
       implementations?: ImplementationOption[];
+      attachable?: AttachableImplementations;
     };
     if (!response.ok || !payload.ok) {
       setError(payload.error || "Users & Access could not be loaded.");
@@ -263,6 +289,7 @@ export function UsersAccessScreen({
     const next = payload.users ?? [];
     setUsers(next);
     setImplementations(payload.implementations ?? []);
+    setAttachable(payload.attachable ?? { options: [], hiddenCount: 0 });
     setError("");
     return next;
   }
@@ -327,6 +354,59 @@ export function UsersAccessScreen({
         setSelected(payload.user);
         setImplementationId(payload.user.implementationId ?? implementations[0]?.id ?? "");
       }
+    }
+  }
+
+  // Returning from /setup/property reopens this person's drawer with fresh history.
+  const linkedUserId = useRef(initialManageRow?.userId ?? null);
+  useEffect(() => {
+    const userId = linkedUserId.current;
+    if (!userId) {
+      return;
+    }
+    linkedUserId.current = null;
+    void (async () => {
+      const response = await fetch(`/api/implementation/users/${userId}`);
+      const payload = (await response.json()) as { ok?: boolean; audit?: AuditRow[] };
+      if (response.ok && payload.ok) {
+        setAudit(payload.audit ?? []);
+      }
+    })();
+  }, []);
+
+  async function changeImplementation(implementationId: string | null) {
+    if (!selected || busy) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/implementation/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          implementationId
+            ? { userId: selected.userId, action: "assign", implementationId }
+            : { userId: selected.userId, action: "newImplementation" },
+        ),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string; user?: AccessUserView };
+      if (!response.ok || !payload.ok || !payload.user) {
+        setError(payload.error || "That access change could not be saved.");
+        return;
+      }
+      if (!implementationId) {
+        if (payload.user.implementationId) {
+          router.push(propertySetupHref(payload.user.userId, payload.user.implementationId));
+        }
+        return;
+      }
+      const next = await load();
+      const updated = next.find((row) => row.userId === selected.userId) ?? payload.user;
+      await openManage(updated);
+      setToast("Property attached");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -411,7 +491,10 @@ export function UsersAccessScreen({
                       accountType: "customer",
                       implementationId: action.implementationId,
                     }
-                  : { userId: selected.userId, action: "assign", implementationId: action.implementationId };
+                  : null;
+      if (!body) {
+        return;
+      }
       const response = await fetch("/api/implementation/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -430,7 +513,6 @@ export function UsersAccessScreen({
       await openManage(updated);
       if (action.kind === "disable") setToast("Access disabled");
       else if (action.kind === "enable") setToast("Access reactivated");
-      else if (action.kind === "impl") setToast("Implementation changed");
       else if (action.kind === "convertCustomer") setToast("Changed to Customer");
       else if (action.kind === "convertInternal") setToast(`Changed to Internal / ${ROLEDEF[action.role].l}`);
       else setToast(`Role changed to ${ROLEDEF[action.role].l}`);
@@ -633,10 +715,15 @@ export function UsersAccessScreen({
                   blocked={lastAdmin(selected)}
                   provisionedBy={actorLabel(selected.provisionedBy)}
                   onRole={(next) => setConfirm(next === "admin" && selected.role !== "admin" ? { kind: "promote", role: "admin" } : { kind: "role", role: next })}
-                  onImplementation={(id) => {
-                    setImplementationId(id);
-                    if (id !== selected.implementationId) {
-                      setConfirm({ kind: "impl", implementationId: id });
+                  attachable={attachable.options}
+                  hiddenCount={attachable.hiddenCount}
+                  busy={busy}
+                  actorLabel={actorLabel}
+                  onAttach={(id) => void changeImplementation(id)}
+                  onCreate={() => void changeImplementation(null)}
+                  onContinue={() => {
+                    if (selected.implementationId) {
+                      router.push(propertySetupHref(selected.userId, selected.implementationId));
                     }
                   }}
                   onConvertInternal={(next) =>
@@ -890,8 +977,14 @@ function ManageBody({
   implementationId,
   blocked,
   provisionedBy,
+  attachable,
+  hiddenCount,
+  busy,
+  actorLabel,
   onRole,
-  onImplementation,
+  onAttach,
+  onCreate,
+  onContinue,
   onConvertInternal,
   onConvertCustomer,
   onPickImplementation,
@@ -902,8 +995,14 @@ function ManageBody({
   implementationId: string;
   blocked: boolean;
   provisionedBy: string | null;
+  attachable: AttachableImplementation[];
+  hiddenCount: number;
+  busy: boolean;
+  actorLabel: (userId: string | null | undefined) => string | null;
   onRole: (role: InternalRole) => void;
-  onImplementation: (id: string) => void;
+  onAttach: (id: string) => void;
+  onCreate: () => void;
+  onContinue: () => void;
   onConvertInternal: (role: InternalRole) => void;
   onConvertCustomer: (id: string | null) => void;
   onPickImplementation: (id: string) => void;
@@ -1026,25 +1125,21 @@ function ManageBody({
           )}
         </>
       ) : null}
-      {user.role === "customer" ? (
+      {customer ? (
         <>
           <div className="sq">Implementation</div>
-          <div className="f" style={{ marginTop: 0 }}>
-            <TraqraSelect
-              id="mimpl"
-              value={implementationId}
-              searchable
-              placeholder="Select the implementation"
-              ariaLabel="Implementation"
-              options={implementations.map((option) => ({
-                value: option.id,
-                label: option.name,
-                desc: option.id,
-              }))}
-              onChange={onImplementation}
-            />
-            <div className="hint">Moving this person changes which setup they can open. Recorded as a governance event.</div>
-          </div>
+          <ImplementationSection
+            key={user.implementationId ?? "none"}
+            user={user}
+            audit={audit}
+            attachable={attachable}
+            hiddenCount={hiddenCount}
+            busy={busy}
+            actorLabel={actorLabel}
+            onAttach={onAttach}
+            onCreate={onCreate}
+            onContinue={onContinue}
+          />
         </>
       ) : null}
       <div className="sq">Access history</div>
@@ -1056,6 +1151,9 @@ function ManageBody({
               <span className="av">
                 <b>{AULABEL[event.eventType] || event.eventType.replaceAll("_", " ")}</b>
                 {event.newState?.role ? ` · ${String(event.newState.role)}` : ""}
+                {typeof event.newState?.mode === "string" && ASSIGNMENT_MODE[event.newState.mode]
+                  ? ` · ${ASSIGNMENT_MODE[event.newState.mode]}`
+                  : ""}
                 <i>
                   {event.eventType}
                 </i>
@@ -1081,6 +1179,235 @@ function ManageBody({
   );
 }
 
+const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
+
+function ImplementationSection({
+  user,
+  audit,
+  attachable,
+  hiddenCount,
+  busy,
+  actorLabel,
+  onAttach,
+  onCreate,
+  onContinue,
+}: {
+  user: AccessUserView;
+  audit: AuditRow[];
+  attachable: AttachableImplementation[];
+  hiddenCount: number;
+  busy: boolean;
+  actorLabel: (userId: string | null | undefined) => string | null;
+  onAttach: (id: string) => void;
+  onCreate: () => void;
+  onContinue: () => void;
+}) {
+  const linked = user.implementationSetup === "draft" || user.implementationSetup === "submitted";
+  const [view, setView] = useState<"linked" | "choose" | "picker" | "confirm">(linked ? "linked" : "choose");
+  const [search, setSearch] = useState("");
+  const [picked, setPicked] = useState<AttachableImplementation | null>(null);
+
+  const q = search.trim().toLowerCase();
+  const named = attachable.filter((row) => row.propertyName && (!q || row.propertyName.toLowerCase().includes(q)));
+  const unnamed = q ? [] : attachable.filter((row) => !row.propertyName);
+
+  if (view === "picker") {
+    return (
+      <div className="idcard" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <b>Attach to an existing property</b>
+          <button type="button" className="btn sm" onClick={() => setView(linked ? "linked" : "choose")}>
+            Cancel
+          </button>
+        </div>
+        <div className="f" style={{ padding: "0 14px 10px", margin: 0 }}>
+          <input
+            type="search"
+            autoFocus
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search property name…"
+            aria-label="Search property name"
+          />
+          <div className="hint">
+            {attachable.length} {attachable.length === 1 ? "property" : "properties"} with no customer attached
+          </div>
+        </div>
+        <div style={{ maxHeight: 300, overflowY: "auto", padding: "0 6px 6px" }} role="listbox" aria-label="Properties">
+          {named.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              className="opt"
+              role="option"
+              aria-selected={false}
+              onClick={() => {
+                setPicked(row);
+                setView("confirm");
+              }}
+            >
+              <span>
+                <span className="ol">{row.propertyName}</span>
+                <span className="od" style={{ fontFamily: MONO, fontSize: 11 }}>
+                  {row.id}
+                </span>
+              </span>
+            </button>
+          ))}
+          {q && !named.length ? <div className="kd na" style={{ padding: "12px 10px" }}>No unassigned property matches “{search}”.</div> : null}
+          {unnamed.length ? (
+            <>
+              <div className="sq" style={{ padding: "8px 10px 0" }}>
+                No name entered yet
+              </div>
+              {unnamed.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  className="opt"
+                  role="option"
+                  aria-selected={false}
+                  onClick={() => {
+                    setPicked(row);
+                    setView("confirm");
+                  }}
+                >
+                  <span>
+                    <span className="ol" style={{ fontStyle: "italic", fontWeight: 400 }}>
+                      Untitled property · created {formatAuditWhen(row.createdAt)}
+                    </span>
+                    <span className="od" style={{ fontFamily: MONO, fontSize: 11 }}>
+                      {row.id}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </>
+          ) : null}
+        </div>
+        <div className="hint" style={{ padding: "10px 14px", borderTop: "1px solid var(--line, #e5e7eb)", margin: 0 }}>
+          {hiddenCount} {hiddenCount === 1 ? "property that already belongs" : "properties that already belong"} to a
+          customer {hiddenCount === 1 ? "is" : "are"} hidden and can’t be reassigned from here.
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "confirm" && picked) {
+    const label = picked.propertyName || "Untitled property";
+    return (
+      <div className="confirm pu">
+        <div className="ct">{label}</div>
+        <div className="kd" style={{ fontFamily: MONO, fontSize: 11 }}>
+          {picked.id}
+        </div>
+        <div className="sq">What happens</div>
+        <ul className="cd2" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+          <li>
+            This person becomes the customer for <b>{label}</b> and can open its setup.
+          </li>
+          <li>Any details already entered stay as they are.</li>
+          <li>It drops out of this list for other customers. Recorded as a governance event.</li>
+          {linked ? <li>Their current setup is kept and becomes available to attach to another customer.</li> : null}
+        </ul>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+          <button type="button" className="btn sm" disabled={busy} onClick={() => setView("picker")}>
+            Back
+          </button>
+          <button type="button" className="btn sm pri" disabled={busy} onClick={() => onAttach(picked.id)}>
+            Attach property
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "choose") {
+    return (
+      <>
+        <div className="kd">
+          {linked
+            ? "Choose a different implementation for this person. Their current setup is kept and becomes available to attach to another customer."
+            : "This customer isn’t linked to a property yet. Choose how to set them up."}
+        </div>
+        <div className="opts">
+          <button type="button" className="opt" disabled={busy} onClick={() => setView("picker")}>
+            <span className="rd" />
+            <span>
+              <span className="ol">Attach to an existing property</span>
+              <span className="od">Give them access to a property that doesn’t belong to any customer yet.</span>
+            </span>
+          </button>
+          <button type="button" className="opt" disabled={busy} onClick={onCreate}>
+            <span className="rd" />
+            <span>
+              <span className="ol">Create a new implementation</span>
+              <span className="od">
+                Start property setup on their behalf. Saves once the property name and contact name are entered.
+              </span>
+            </span>
+          </button>
+        </div>
+        {linked ? (
+          <button type="button" className="btn sm" onClick={() => setView("linked")}>
+            Cancel
+          </button>
+        ) : null}
+      </>
+    );
+  }
+
+  const latest = audit.find(
+    (event) => event.eventType === "CUSTOMER_ASSIGNMENT_CHANGED" || event.eventType === "CUSTOMER_PROPERTY_SAVED",
+  );
+  const attachedLast = latest?.eventType === "CUSTOMER_ASSIGNMENT_CHANGED" && latest.newState?.mode === "attached";
+  const submitted = user.implementationSetup === "submitted";
+  return (
+    <div className="idcard">
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+        <span style={{ minWidth: 0 }}>
+          <div className="nm2">{user.implementationName || "Untitled property"}</div>
+          <div className="kd" style={{ fontFamily: MONO, fontSize: 11 }}>
+            {user.implementationId}
+          </div>
+        </span>
+        <span className={`bd ${submitted ? "ok" : "pend"}`}>{submitted ? "Submitted" : "Draft · started"}</span>
+      </div>
+      <div className="idmeta">
+        {latest ? (
+          <span className="kv">
+            <span className="kk">{attachedLast ? "Attached by" : "Started by"}</span>
+            <span className="kd">
+              {actorLabel(latest.actorUserId) || "An Admin"} · {formatWhen(latest.createdAt)}
+            </span>
+          </span>
+        ) : null}
+        <span className="kv">
+          <span className="kk">Progress</span>
+          <span className="kd">{submitted ? "Submitted" : attachedLast ? "Customer to complete" : "Partial details saved"}</span>
+        </span>
+      </div>
+      <div className="hint">
+        {submitted
+          ? "This setup has been submitted."
+          : attachedLast
+            ? "This person can now open this property’s setup on their next request."
+            : "When this person next signs in, they land in this setup with these details already filled in."}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 10 }}>
+        <button type="button" className="btn sm" disabled={busy} onClick={() => setView("choose")}>
+          Change implementation
+        </button>
+        {submitted ? null : (
+          <button type="button" className="btn sm" disabled={busy} onClick={onContinue}>
+            Continue in setup ↗
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ConfirmBody({ user, action }: { user: AccessUserView; action: ConfirmAction }) {
   const copy = {
     promote: {
@@ -1102,11 +1429,6 @@ function ConfirmBody({ user, action }: { user: AccessUserView; action: ConfirmAc
       tone: "",
       title: "Reactivate access?",
       body: "Their previous role and scope are restored.",
-    },
-    impl: {
-      tone: "pu",
-      title: "Move to a different implementation?",
-      body: "They will lose access to the current setup and gain access to the new one.",
     },
     convertInternal: {
       tone: "pu",
@@ -1148,11 +1470,9 @@ function ConfirmBody({ user, action }: { user: AccessUserView; action: ConfirmAc
       ? "ACCESS_DISABLED"
       : action.kind === "enable"
         ? "ACCESS_REACTIVATED"
-        : action.kind === "impl"
-          ? "CUSTOMER_ASSIGNMENT_CHANGED"
-          : action.kind === "convertInternal" || action.kind === "convertCustomer"
-            ? "ACCOUNT_TYPE_CHANGED"
-            : "ROLE_CHANGED";
+        : action.kind === "convertInternal" || action.kind === "convertCustomer"
+          ? "ACCOUNT_TYPE_CHANGED"
+          : "ROLE_CHANGED";
 
   return (
     <>
@@ -1162,13 +1482,11 @@ function ConfirmBody({ user, action }: { user: AccessUserView; action: ConfirmAc
       </div>
       <div className="chg">
         <span className="cl2">
-          {action.kind === "impl"
-            ? "Implementation"
-            : action.kind === "disable" || action.kind === "enable"
-              ? "Status"
-              : action.kind === "convertInternal" || action.kind === "convertCustomer"
-                ? "Account type"
-                : "Role"}
+          {action.kind === "disable" || action.kind === "enable"
+            ? "Status"
+            : action.kind === "convertInternal" || action.kind === "convertCustomer"
+              ? "Account type"
+              : "Role"}
         </span>
         <span className="cv2">
           <s>{from}</s>

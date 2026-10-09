@@ -650,6 +650,10 @@ describe("Users & Access authorization", () => {
         async reactivate(input) {
           calls.push({ op: "reactivate", ...input });
         },
+        async setCustomerImplementation(input) {
+          calls.push({ op: "setCustomerImplementation", ...input });
+          return { mode: "attached" as const, implementationId: input.implementationId ?? "new" };
+        },
       },
     });
     asUser("admin-1", "admin@bookmax.ai");
@@ -1551,8 +1555,9 @@ describe("Users & Access authorization", () => {
 
   it("an existing Customer is never moved without an explicit target implementation", async () => {
     const before = await world.customers.findMembershipByUserId("customer-1");
+    // Reassignment only ever targets an implementation no customer belongs to.
+    const target = (await world.customers.insertImplementation()).id;
     const implementationsBefore = await world.customers.listImplementations();
-    const target = implementationsBefore.find((row) => row.id !== before?.implementationId)!.id;
 
     asUser("admin-1", "admin@bookmax.ai");
     const { PATCH } = await import("@/app/api/implementation/users/route");
@@ -1592,5 +1597,294 @@ describe("Users & Access authorization", () => {
     const { GET: submissions } = await import("@/app/api/implementation/submissions/route");
     expect((await users(new NextRequest("http://localhost:3000/api/implementation/users"))).status).toBe(401);
     expect((await submissions(new NextRequest("http://localhost:3000/api/implementation/submissions"))).status).toBe(401);
+  });
+
+  describe("Manage access: attach or create a Customer's implementation", () => {
+    const CUSTOMER = "aaaaaaaa-0000-4000-8000-000000000001";
+    const CUSTOMER_EMAIL = "manage-cust@hotel.com";
+
+    async function provisionUuidCustomer() {
+      world.identities.seed({ userId: CUSTOMER, email: CUSTOMER_EMAIL, lastSignInAt: STAMP, createdAt: STAMP });
+      asUser("admin-1", "admin@bookmax.ai");
+      const { POST } = await import("@/app/api/implementation/users/route");
+      const granted = await POST(
+        new NextRequest("http://localhost:3000/api/implementation/users", {
+          method: "POST",
+          body: JSON.stringify({ userId: CUSTOMER, accountType: "customer" }),
+        }),
+      );
+      expect(granted.status).toBe(200);
+      return (await granted.json()).user.implementationId as string;
+    }
+
+    async function unattachedProperty(name: string) {
+      const implementation = await world.customers.insertImplementation();
+      await world.customers.upsertProperty(implementation.id, { name, contactName: "Previous Contact" });
+      return implementation.id;
+    }
+
+    async function patch(body: Record<string, unknown>) {
+      asUser("admin-1", "admin@bookmax.ai");
+      const { PATCH } = await import("@/app/api/implementation/users/route");
+      return PATCH(
+        new NextRequest("http://localhost:3000/api/implementation/users", {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        }),
+      );
+    }
+
+    it("lists only implementations no customer belongs to, and counts the hidden ones", async () => {
+      const own = await provisionUuidCustomer();
+      const free = await unattachedProperty("Brooklands Hotel");
+      // A disabled customer still owns their implementation.
+      await patch({ userId: "customer-1", action: "disable" });
+      const disabledImplementation = (await world.customers.findMembershipByUserId("customer-1"))!.implementationId;
+
+      asUser("admin-1", "admin@bookmax.ai");
+      const { GET } = await import("@/app/api/implementation/users/route");
+      const listed = await (await GET(new NextRequest("http://localhost:3000/api/implementation/users"))).json();
+      const ids = listed.attachable.options.map((row: { id: string }) => row.id);
+      expect(ids).toContain(free);
+      expect(ids).not.toContain(own);
+      expect(ids).not.toContain(disabledImplementation);
+      expect(listed.attachable.options.find((row: { id: string }) => row.id === free).propertyName).toBe(
+        "Brooklands Hotel",
+      );
+      expect(listed.attachable.hiddenCount).toBe(3);
+    });
+
+    it("attaches to an unattached property, deletes the empty implementation left behind, and records it", async () => {
+      const own = await provisionUuidCustomer();
+      const free = await unattachedProperty("Brooklands Hotel");
+      const attached = await patch({ userId: CUSTOMER, action: "assign", implementationId: free });
+      expect(attached.status).toBe(200);
+      const user = (await attached.json()).user;
+      expect(user.implementationId).toBe(free);
+      expect(user.implementationName).toBe("Brooklands Hotel");
+      expect(user.implementationSetup).toBe("draft");
+      expect(await world.customers.findImplementationById(own)).toBeNull();
+      expect((await world.customers.findPropertyByImplementationId(free))?.contactName).toBe("Previous Contact");
+
+      const events = await world.accessAudit.listByTarget(CUSTOMER);
+      expect(events[0]).toMatchObject({
+        eventType: "CUSTOMER_ASSIGNMENT_CHANGED",
+        actorUserId: "admin-1",
+        previousState: { implementationId: own },
+        newState: { implementationId: free, mode: "attached", previousImplementationDeleted: true },
+      });
+
+      const verified = await verifyOtpFor(CUSTOMER, CUSTOMER_EMAIL);
+      expect((await verified.json()).resumePath).toBe("/setup/pms");
+    });
+
+    it("refuses to attach a property that already belongs to a customer, active or disabled", async () => {
+      const own = await provisionUuidCustomer();
+      const taken = (await world.customers.findMembershipByUserId("gauge-1"))!.implementationId;
+      const refused = await patch({ userId: CUSTOMER, action: "assign", implementationId: taken });
+      expect(refused.status).toBe(400);
+      expect((await refused.json()).error).toBe("That property already belongs to a customer.");
+
+      await patch({ userId: "customer-1", action: "disable" });
+      const disabled = (await world.customers.findMembershipByUserId("customer-1"))!.implementationId;
+      const refusedDisabled = await patch({ userId: CUSTOMER, action: "assign", implementationId: disabled });
+      expect(refusedDisabled.status).toBe(400);
+
+      expect((await world.customers.findMembershipByUserId(CUSTOMER))?.implementationId).toBe(own);
+      expect((await world.customers.findMembershipByUserId("gauge-1"))?.implementationId).toBe(taken);
+      const events = await world.accessAudit.listByTarget(CUSTOMER);
+      expect(events.some((event) => event.eventType === "CUSTOMER_ASSIGNMENT_CHANGED")).toBe(false);
+    });
+
+    it("a failure during attach leaves the customer where they were", async () => {
+      const own = await provisionUuidCustomer();
+      const free = await unattachedProperty("Brooklands Hotel");
+      world.failAt.stage = "membership";
+      const failed = await patch({ userId: CUSTOMER, action: "assign", implementationId: free });
+      expect(failed.status).toBe(503);
+      expect((await world.customers.findMembershipByUserId(CUSTOMER))?.implementationId).toBe(own);
+      expect(await world.customers.findImplementationById(own)).not.toBeNull();
+    });
+
+    it("creating a new implementation reuses an empty one, and starts a fresh one otherwise", async () => {
+      const own = await provisionUuidCustomer();
+      const reused = await patch({ userId: CUSTOMER, action: "newImplementation" });
+      expect(reused.status).toBe(200);
+      expect((await reused.json()).user.implementationId).toBe(own);
+      expect((await world.accessAudit.listByTarget(CUSTOMER)).some((e) => e.eventType === "CUSTOMER_ASSIGNMENT_CHANGED")).toBe(
+        false,
+      );
+
+      await world.customers.upsertProperty(own, { name: "First Hotel", contactName: "Cara" });
+      const fresh = await patch({ userId: CUSTOMER, action: "newImplementation" });
+      const next = (await fresh.json()).user.implementationId as string;
+      expect(next).not.toBe(own);
+      expect(await world.customers.findPropertyByImplementationId(next)).toBeNull();
+      // The previous setup is kept and is now available to attach.
+      expect(await world.customers.findPropertyByImplementationId(own)).not.toBeNull();
+      asUser("admin-1", "admin@bookmax.ai");
+      const { GET } = await import("@/app/api/implementation/users/route");
+      const listed = await (await GET(new NextRequest("http://localhost:3000/api/implementation/users"))).json();
+      expect(listed.attachable.options.map((row: { id: string }) => row.id)).toContain(own);
+    });
+
+    it("an internal user cannot be attached to a property", async () => {
+      const free = await unattachedProperty("Brooklands Hotel");
+      const refused = await patch({ userId: "engineer-1", action: "assign", implementationId: free });
+      expect(refused.status).toBe(400);
+      expect(await world.customers.findMembershipByUserId("engineer-1")).toBeNull();
+    });
+  });
+
+  describe("Admin acting on one Customer's property step", () => {
+    const CUSTOMER = "bbbbbbbb-0000-4000-8000-000000000002";
+    const CUSTOMER_EMAIL = "acting-cust@hotel.com";
+
+    async function setup() {
+      world.identities.seed({ userId: CUSTOMER, email: CUSTOMER_EMAIL, lastSignInAt: STAMP, createdAt: STAMP });
+      asUser("admin-1", "admin@bookmax.ai");
+      const { POST } = await import("@/app/api/implementation/users/route");
+      const granted = await POST(
+        new NextRequest("http://localhost:3000/api/implementation/users", {
+          method: "POST",
+          body: JSON.stringify({ userId: CUSTOMER, accountType: "customer" }),
+        }),
+      );
+      return (await granted.json()).user.implementationId as string;
+    }
+
+    function scoped(path: string, implementationId: string, customer = CUSTOMER) {
+      return `http://localhost:3000${path}?${new URLSearchParams({ customer, implementation: implementationId })}`;
+    }
+
+    it("an Admin can open and save the property with only name and contact name", async () => {
+      const implementationId = await setup();
+      const { GET, POST } = await import("@/app/api/setup/property/route");
+
+      asUser("admin-1", "admin@bookmax.ai");
+      const opened = await GET(new NextRequest(scoped("/api/setup/property", implementationId)));
+      expect(opened.status).toBe(200);
+      const openedBody = await opened.json();
+      expect(openedBody.email).toBe(CUSTOMER_EMAIL);
+      expect(openedBody.implementation.id).toBe(implementationId);
+
+      asUser("admin-1", "admin@bookmax.ai");
+      const saved = await POST(
+        new NextRequest(scoped("/api/setup/property", implementationId), {
+          method: "POST",
+          body: JSON.stringify({ name: "Seaview Hotels Group", contactName: "Cara" }),
+        }),
+      );
+      expect(saved.status).toBe(200);
+      expect((await world.customers.findPropertyByImplementationId(implementationId))?.name).toBe(
+        "Seaview Hotels Group",
+      );
+      expect((await world.customers.findImplementationById(implementationId))?.status).toBe("property_complete");
+      const events = await world.accessAudit.listByTarget(CUSTOMER);
+      expect(events[0]).toMatchObject({
+        eventType: "CUSTOMER_PROPERTY_SAVED",
+        actorUserId: "admin-1",
+        newState: { implementationId, propertyCreated: true },
+      });
+
+      // The customer resumes in this setup with the Admin's details.
+      const verified = await verifyOtpFor(CUSTOMER, CUSTOMER_EMAIL);
+      expect((await verified.json()).resumePath).toBe("/setup/pms");
+    });
+
+    it("still requires both property name and contact name", async () => {
+      const implementationId = await setup();
+      const { POST } = await import("@/app/api/setup/property/route");
+      asUser("admin-1", "admin@bookmax.ai");
+      const refused = await POST(
+        new NextRequest(scoped("/api/setup/property", implementationId), {
+          method: "POST",
+          body: JSON.stringify({ name: "Seaview Hotels Group" }),
+        }),
+      );
+      expect(refused.status).toBe(400);
+      expect(await world.customers.findPropertyByImplementationId(implementationId)).toBeNull();
+    });
+
+    it("refuses every request outside the one Customer and implementation named", async () => {
+      const implementationId = await setup();
+      const otherImplementation = (await world.customers.findMembershipByUserId("customer-1"))!.implementationId;
+      const { GET } = await import("@/app/api/setup/property/route");
+      const open = (url: string) => GET(new NextRequest(url));
+
+      // Admin with no scope is not a customer.
+      asUser("admin-1", "admin@bookmax.ai");
+      expect((await open("http://localhost:3000/api/setup/property")).status).toBe(403);
+      // Implementation that is not this customer's.
+      asUser("admin-1", "admin@bookmax.ai");
+      expect((await open(scoped("/api/setup/property", otherImplementation))).status).toBe(403);
+      // Customer id that is not a customer.
+      asUser("admin-1", "admin@bookmax.ai");
+      expect((await open(scoped("/api/setup/property", implementationId, "cccccccc-0000-4000-8000-000000000003"))).status).toBe(
+        403,
+      );
+      // Not an Admin.
+      asUser("engineer-1", "engineer@bookmax.ai");
+      expect((await open(scoped("/api/setup/property", implementationId))).status).toBe(403);
+      // A customer cannot use the scope to reach another customer.
+      asUser("customer-1", "priya@hotel.com");
+      expect((await open(scoped("/api/setup/property", implementationId))).status).toBe(403);
+      // Disabled customer.
+      await (async () => {
+        asUser("admin-1", "admin@bookmax.ai");
+        const { PATCH } = await import("@/app/api/implementation/users/route");
+        await PATCH(
+          new NextRequest("http://localhost:3000/api/implementation/users", {
+            method: "PATCH",
+            body: JSON.stringify({ userId: CUSTOMER, action: "disable" }),
+          }),
+        );
+      })();
+      asUser("admin-1", "admin@bookmax.ai");
+      expect((await open(scoped("/api/setup/property", implementationId))).status).toBe(403);
+    });
+
+    it("the scope opens no other setup API for an Admin", async () => {
+      const implementationId = await setup();
+      const { POST: saveIntake } = await import("@/app/api/setup/intake/route");
+      const { GET: context } = await import("@/app/api/setup/context/route");
+      asUser("admin-1", "admin@bookmax.ai");
+      expect(
+        (
+          await saveIntake(
+            new NextRequest(scoped("/api/setup/intake", implementationId), {
+              method: "POST",
+              body: JSON.stringify({ pmsId: "mews" }),
+            }),
+          )
+        ).status,
+      ).toBe(403);
+      asUser("admin-1", "admin@bookmax.ai");
+      expect((await context(new NextRequest(scoped("/api/setup/context", implementationId)))).status).toBe(403);
+    });
+
+    it("the property page lets the scoped Admin in and redirects everyone else", async () => {
+      const implementationId = await setup();
+      const { requirePropertySetupPage } = await import("@/lib/implementation/customer/auth");
+      asUser("admin-1", "admin@bookmax.ai");
+      await expect(
+        requirePropertySetupPage({ customer: CUSTOMER, implementation: implementationId }),
+      ).resolves.toBeUndefined();
+
+      asUser("admin-1", "admin@bookmax.ai");
+      await expect(
+        requirePropertySetupPage({ customer: CUSTOMER, implementation: "dddddddd-0000-4000-8000-000000000004" }),
+      ).rejects.toMatchObject({ digest: expect.stringContaining("/implementation/users") });
+
+      asUser("admin-1", "admin@bookmax.ai");
+      await expect(requirePropertySetupPage({ customer: null, implementation: null })).rejects.toMatchObject({
+        digest: expect.stringContaining("/implementation/users"),
+      });
+
+      asUser("engineer-1", "engineer@bookmax.ai");
+      await expect(
+        requirePropertySetupPage({ customer: CUSTOMER, implementation: implementationId }),
+      ).rejects.toMatchObject({ digest: expect.stringContaining("/implementation/submissions") });
+    });
   });
 });

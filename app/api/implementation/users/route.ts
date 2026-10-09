@@ -14,11 +14,12 @@ export async function GET(request: NextRequest) {
   try {
     const staff = await requireAdmin(request);
     const service = getAccessDirectoryService();
-    const [users, implementations] = await Promise.all([
+    const [users, implementations, attachable] = await Promise.all([
       service.list(staff),
       service.listImplementationOptions(staff),
+      service.listAttachableImplementations(staff),
     ]);
-    return staff.attachAuthCookies(NextResponse.json({ ok: true, users, implementations }));
+    return staff.attachAuthCookies(NextResponse.json({ ok: true, users, implementations, attachable }));
   } catch (error) {
     return internalErrorToResponse(error);
   }
@@ -100,7 +101,9 @@ export async function PATCH(request: NextRequest) {
             ? { action: "reactivate" as const }
             : body.action === "assign"
               ? { action: "assign" as const, implementationId: body.implementationId || "" }
-              : body.action === "accountType" && body.accountType === "internal" && isRole(body.role)
+              : body.action === "newImplementation"
+                ? { action: "newImplementation" as const }
+                : body.action === "accountType" && body.accountType === "internal" && isRole(body.role)
                 ? { action: "accountType" as const, accountType: "internal" as const, role: body.role }
                 : body.action === "accountType" && body.accountType === "customer"
                   ? {

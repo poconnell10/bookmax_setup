@@ -84,6 +84,31 @@ export function createMemoryCustomerStore(): CustomerStore {
       return created;
     },
 
+    async deleteImplementation(id) {
+      implementations.delete(id);
+      for (const [membershipId, membership] of memberships) {
+        if (membership.implementationId === id) {
+          memberships.delete(membershipId);
+          membershipByUser.delete(membership.userId);
+        }
+      }
+      const propertyId = propertyByImplementation.get(id);
+      if (propertyId) {
+        properties.delete(propertyId);
+        propertyByImplementation.delete(id);
+      }
+      const intakeId = intakeByImplementation.get(id);
+      if (intakeId) {
+        intakes.delete(intakeId);
+        intakeByImplementation.delete(id);
+      }
+      const submissionId = submissionByImplementation.get(id);
+      if (submissionId) {
+        submissions.delete(submissionId);
+        submissionByImplementation.delete(id);
+      }
+    },
+
     async insertMembership({ implementationId, userId }) {
       if (membershipByUser.has(userId)) {
         throw new CustomerError("invalid_input", "User already belongs to an implementation.");

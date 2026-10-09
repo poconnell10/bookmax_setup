@@ -14,6 +14,7 @@ export function SetupShell({
   property,
   intake,
   submitted,
+  stepsLocked,
   children,
 }: {
   email?: string;
@@ -21,6 +22,8 @@ export function SetupShell({
   property?: CustomerProperty | null;
   intake?: SetupIntakePayload;
   submitted?: boolean;
+  /** An Admin may only act on the property step, so the other steps stay closed. */
+  stepsLocked?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -58,6 +61,7 @@ export function SetupShell({
                 const on = stageIndex === currentIndex;
                 const stageId = stage.id as Exclude<SetupStageId, "access">;
                 const can =
+                  !stepsLocked &&
                   canReachSetupStage(stageId, {
                     property: property ?? null,
                     intake: intake ?? emptySetupIntake(),

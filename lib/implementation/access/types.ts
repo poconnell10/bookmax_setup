@@ -5,6 +5,7 @@ export const ACCESS_AUDIT_EVENTS = [
   "ACCESS_REACTIVATED",
   "CUSTOMER_ASSIGNMENT_CHANGED",
   "ACCOUNT_TYPE_CHANGED",
+  "CUSTOMER_PROPERTY_SAVED",
 ] as const;
 
 export type AccessAuditEventType = (typeof ACCESS_AUDIT_EVENTS)[number];
@@ -25,6 +26,8 @@ export type AccessUserView = {
   firstSignInAt: string | null;
   implementationId: string | null;
   implementationName: string | null;
+  /** Customer setup progress by row existence; null for non-customers. */
+  implementationSetup: "empty" | "draft" | "submitted" | null;
   provisionedBy: string | null;
 };
 
@@ -38,6 +41,19 @@ export type AccessIdentity = {
 export type ImplementationOption = {
   id: string;
   name: string;
+};
+
+/** An implementation with no implementation_users row in any status. */
+export type AttachableImplementation = {
+  id: string;
+  propertyName: string | null;
+  createdAt: string;
+};
+
+export type AttachableImplementations = {
+  options: AttachableImplementation[];
+  /** Named properties hidden because a customer already belongs to them. */
+  hiddenCount: number;
 };
 
 export type AccessAuditView = {
