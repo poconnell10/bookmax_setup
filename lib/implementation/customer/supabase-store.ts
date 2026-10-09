@@ -232,6 +232,13 @@ export function createSupabaseCustomerStore(client: SupabaseClient): CustomerSto
       return mapImplementation(data as ImplementationRow);
     },
 
+    async deleteImplementation(id) {
+      const { error } = await client.from("implementations").delete().eq("id", id);
+      if (error) {
+        throwStoreError(error);
+      }
+    },
+
     async insertMembership({ implementationId, userId }) {
       const { data, error } = await client
         .from("implementation_users")

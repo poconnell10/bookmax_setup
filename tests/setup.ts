@@ -14,6 +14,9 @@ vi.mock("next/navigation", () => ({
     prefetch: vi.fn(),
   })),
   useSearchParams: vi.fn(() => new URLSearchParams()),
+  redirect: vi.fn((url: string) => {
+    throw Object.assign(new Error("NEXT_REDIRECT"), { digest: `NEXT_REDIRECT;replace;${url};307;` });
+  }),
 }));
 
 vi.mock("next/link", () => ({

@@ -15,8 +15,17 @@ type FieldErrors = {
 
 const REQUIRED = "This field is required.";
 
-export function PropertySetupScreen() {
+export function PropertySetupScreen({
+  adminScope = null,
+}: {
+  /** Set when an Admin is filling in this step for one Customer. */
+  adminScope?: { customer: string; implementation: string } | null;
+}) {
   const router = useRouter();
+  const scopeQuery = adminScope
+    ? `?${new URLSearchParams({ customer: adminScope.customer, implementation: adminScope.implementation })}`
+    : "";
+  const exitPath = adminScope ? `/implementation/users?manage=${encodeURIComponent(adminScope.customer)}` : "/access";
   const [email, setEmail] = useState("");
   const [property, setProperty] = useState<CustomerProperty | null>(null);
   const [intake, setIntake] = useState<SetupIntakePayload>(emptySetupIntake());
@@ -36,9 +45,9 @@ export function PropertySetupScreen() {
     let cancelled = false;
     void (async () => {
       try {
-        const response = await fetch("/api/setup/property");
+        const response = await fetch(`/api/setup/property${scopeQuery}`);
         if (response.status === 403 || response.status === 401) {
-          router.replace("/access");
+          router.replace(exitPath);
           return;
         }
         const payload = (await response.json()) as {
@@ -48,7 +57,7 @@ export function PropertySetupScreen() {
           intake?: SetupIntakePayload;
         };
         if (!response.ok || !payload.ok) {
-          router.replace("/access");
+          router.replace(exitPath);
           return;
         }
         if (cancelled) {
@@ -68,7 +77,7 @@ export function PropertySetupScreen() {
         setTechnicalContactEmail(nextIntake.technicalContactEmail || "");
         setTechnicalContactMobile(nextIntake.technicalContactMobile || "");
       } catch {
-        router.replace("/access");
+        router.replace(exitPath);
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -78,7 +87,16 @@ export function PropertySetupScreen() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, scopeQuery, exitPath]);
+
+  const technicalContactStarted = Boolean(
+    technicalContactName.trim() || technicalContactEmail.trim() || technicalContactMobile.trim(),
+  );
+  // An Admin only has to supply the property and contact names; the PMS access
+  // contact is left for the Customer unless the Admin starts filling it in.
+  const technicalContactRequired = adminScope
+    ? !sameAsPrimaryContact && technicalContactStarted
+    : !sameAsPrimaryContact;
 
   function validate(): boolean {
     const next: FieldErrors = {};
@@ -88,7 +106,7 @@ export function PropertySetupScreen() {
     if (!contactName.trim()) {
       next.contactName = REQUIRED;
     }
-    if (!sameAsPrimaryContact) {
+    if (technicalContactRequired) {
       if (!technicalContactName.trim()) {
         next.technicalContactName = REQUIRED;
       }
@@ -113,17 +131,23 @@ export function PropertySetupScreen() {
     setSaving(true);
     setFormError("");
     try {
-      const response = await fetch("/api/setup/property", {
+      const people =
+        adminScope && !sameAsPrimaryContact && !technicalContactStarted
+          ? {}
+          : {
+              sameAsPrimaryContact,
+              technicalContactName,
+              technicalContactEmail,
+              technicalContactMobile,
+            };
+      const response = await fetch(`/api/setup/property${scopeQuery}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
           hotelBrand,
           contactName,
-          sameAsPrimaryContact,
-          technicalContactName,
-          technicalContactEmail,
-          technicalContactMobile,
+          ...people,
         }),
       });
       const payload = (await response.json()) as { ok?: boolean; error?: string };
@@ -131,7 +155,7 @@ export function PropertySetupScreen() {
         setFormError(payload.error || "We couldn't save your property. Try again.");
         return;
       }
-      router.push("/setup/pms");
+      router.push(adminScope ? exitPath : "/setup/pms");
     } catch {
       setFormError("We couldn't save your property. Try again.");
     } finally {
@@ -153,12 +177,14 @@ export function PropertySetupScreen() {
       saved={Boolean(property)}
       property={property}
       intake={intake}
+      stepsLocked={Boolean(adminScope)}
     >
       <div className="intro">
-        <h1>Set up your property for BookMax</h1>
+        <h1>{adminScope ? "Set up this customer's property" : "Set up your property for BookMax"}</h1>
         <p>
-          BookMax is your pre-arrival upsell solution. We need a few basic details about your
-          property and PMS so our implementation team can get started.
+          {adminScope
+            ? "You're filling this in on the customer's behalf. Property name and contact name are required; everything else can be left for the customer to complete when they next sign in."
+            : "BookMax is your pre-arrival upsell solution. We need a few basic details about your property and PMS so our implementation team can get started."}
         </p>
         <span className="mins">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -352,9 +378,15 @@ export function PropertySetupScreen() {
           </div>
         ) : null}
         <div className="nav">
-          <span />
+          {adminScope ? (
+            <button type="button" className="btn" onClick={() => router.push(exitPath)}>
+              Back to Users &amp; Access
+            </button>
+          ) : (
+            <span />
+          )}
           <button type="submit" className="btn pri" disabled={saving}>
-            {saving ? "Saving…" : "Continue"}
+            {saving ? "Saving…" : adminScope ? "Save and return" : "Continue"}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
               <path d="M5 12h14M13 6l6 6-6 6" />
             </svg>

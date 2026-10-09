@@ -24,6 +24,9 @@ function raise(error: { message?: string } | null): never {
   if (message.includes("property_exists:")) {
     throw new InternalError("invalid_input", "This customer already has a property.");
   }
+  if (message.includes("implementation_taken:")) {
+    throw new InternalError("invalid_input", "That property already belongs to a customer.");
+  }
   if (message.includes("invalid_input:")) {
     throw new InternalError("invalid_input", "That access change is not supported.");
   }
@@ -78,6 +81,25 @@ export function createSupabaseTransitionStore(client: SupabaseClient): AccessTra
       if (error) {
         raise(error);
       }
+    },
+
+    async setCustomerImplementation(input) {
+      const { data, error } = await client.rpc("access_set_customer_implementation", {
+        p_actor_user_id: input.actorUserId,
+        p_target_user_id: input.targetUserId,
+        p_implementation_id: input.implementationId,
+      });
+      if (error) {
+        raise(error);
+      }
+      const result = data as { mode?: string; implementationId?: string } | null;
+      if (
+        !result?.implementationId ||
+        (result.mode !== "attached" && result.mode !== "created" && result.mode !== "reused")
+      ) {
+        throw new InternalError("unavailable", "The service is temporarily unavailable. Please try again.");
+      }
+      return { mode: result.mode, implementationId: result.implementationId };
     },
   };
 }

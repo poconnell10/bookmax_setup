@@ -9,12 +9,26 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function UsersAccessPage() {
+export default async function UsersAccessPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const staff = await requireAdminPage();
   const service = getAccessDirectoryService();
-  const [users, implementations] = await Promise.all([
+  const [users, implementations, attachable, params] = await Promise.all([
     service.list(staff),
     service.listImplementationOptions(staff),
+    service.listAttachableImplementations(staff),
+    searchParams,
   ]);
-  return <UsersAccessScreen initialUsers={users} initialImplementations={implementations} />;
+  const manage = typeof params.manage === "string" ? params.manage : null;
+  return (
+    <UsersAccessScreen
+      initialUsers={users}
+      initialImplementations={implementations}
+      initialAttachable={attachable}
+      initialManageUserId={manage}
+    />
+  );
 }

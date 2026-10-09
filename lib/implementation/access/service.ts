@@ -7,6 +7,7 @@ import type {
   AccessAccountType,
   AccessUserStatus,
   AccessUserView,
+  AttachableImplementations,
   ImplementationOption,
 } from "@/lib/implementation/access/types";
 import type { AccessTransitionStore, ProvisionProperty } from "@/lib/implementation/access/transition-store";
@@ -30,6 +31,7 @@ export type ManageInput =
   | { action: "disable" }
   | { action: "reactivate" }
   | { action: "assign"; implementationId: string }
+  | { action: "newImplementation" }
   | { action: "accountType"; accountType: "internal"; role: InternalRole }
   | { action: "accountType"; accountType: "customer"; implementationId?: string | null };
 
@@ -61,6 +63,17 @@ export function createAccessDirectoryService(deps: {
     }
     const property = await deps.customers.findPropertyByImplementationId(id);
     return property?.name ?? null;
+  }
+
+  async function implementationSetup(id: string): Promise<AccessUserView["implementationSetup"]> {
+    const [property, submission] = await Promise.all([
+      deps.customers.findPropertyByImplementationId(id),
+      deps.customers.findSubmissionByImplementationId(id),
+    ]);
+    if (submission) {
+      return "submitted";
+    }
+    return property ? "draft" : "empty";
   }
 
   async function toView(identity: {
@@ -99,6 +112,7 @@ export function createAccessDirectoryService(deps: {
       firstSignInAt: identity.createdAt,
       implementationId,
       implementationName: await implementationName(implementationId),
+      implementationSetup: implementationId ? await implementationSetup(implementationId) : null,
       provisionedBy: staff?.provisionedBy ?? null,
     };
   }
@@ -128,6 +142,50 @@ export function createAccessDirectoryService(deps: {
       })),
     );
     return options;
+  }
+
+  async function listAttachableImplementations(actor: Actor): Promise<AttachableImplementations> {
+    assertAdmin(actor);
+    const [implementations, memberships] = await Promise.all([
+      deps.customers.listImplementations(),
+      deps.customers.listMemberships(),
+    ]);
+    const attached = new Set(memberships.map((row) => row.implementationId));
+    const rows = await Promise.all(
+      implementations.map(async (row) => ({
+        id: row.id,
+        createdAt: row.createdAt,
+        attached: attached.has(row.id),
+        propertyName: await implementationName(row.id),
+      })),
+    );
+    const options = rows
+      .filter((row) => !row.attached)
+      .map(({ id, propertyName, createdAt }) => ({ id, propertyName, createdAt }))
+      .sort((a, b) => {
+        if (a.propertyName && b.propertyName) return a.propertyName.localeCompare(b.propertyName);
+        if (a.propertyName) return -1;
+        if (b.propertyName) return 1;
+        return b.createdAt.localeCompare(a.createdAt);
+      });
+    const hiddenCount = rows.filter((row) => row.attached && row.propertyName).length;
+    return { options, hiddenCount };
+  }
+
+  /** Audit for an Admin saving a Customer's property from /setup/property. */
+  async function recordCustomerPropertySaved(
+    actor: Actor,
+    targetUserId: string,
+    input: { implementationId: string; propertyCreated: boolean },
+  ) {
+    assertAdmin(actor);
+    await deps.audit.insert({
+      eventType: "CUSTOMER_PROPERTY_SAVED",
+      actorUserId: actor.userId,
+      targetUserId,
+      previousState: { implementationId: input.implementationId },
+      newState: { implementationId: input.implementationId, propertyCreated: input.propertyCreated },
+    });
   }
 
   async function get(actor: Actor, userId: string) {
@@ -290,22 +348,32 @@ export function createAccessDirectoryService(deps: {
       return toView(identity);
     }
 
-    if (!membership) {
+    if (!membership || staff) {
       throw new InternalError("invalid_input", "Only customers can be moved between implementations.");
     }
-    const previous = membership.implementationId;
-    await deps.customers.updateMembership(userId, { implementationId: input.implementationId });
-    await deps.audit.insert({
-      eventType: "CUSTOMER_ASSIGNMENT_CHANGED",
+    if (input.action === "assign" && !input.implementationId) {
+      throw new InternalError("invalid_input", "Choose a property to attach.");
+    }
+    // An attach only ever targets an implementation no customer belongs to, and
+    // the move, the cleanup of an implementation left empty, and the audit event
+    // are one transition.
+    await deps.transitions.setCustomerImplementation({
       actorUserId: actor.userId,
       targetUserId: userId,
-      previousState: { implementationId: previous },
-      newState: { implementationId: input.implementationId },
+      implementationId: input.action === "assign" ? input.implementationId : null,
     });
     return toView(identity);
   }
 
-  return { list, listImplementationOptions, get, provision, manage };
+  return {
+    list,
+    listImplementationOptions,
+    listAttachableImplementations,
+    recordCustomerPropertySaved,
+    get,
+    provision,
+    manage,
+  };
 }
 
 export type AccessDirectoryService = ReturnType<typeof createAccessDirectoryService>;
