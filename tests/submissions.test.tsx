@@ -94,8 +94,8 @@ describe("submissions log", () => {
     expect(document.querySelector("select")).toBeNull();
   });
 
-  it("seeds a prototype log entry without secrets", () => {
-    const listed = listPrototypeSubmissions();
+  it("seeds a prototype log entry without secrets", async () => {
+    const listed = await listPrototypeSubmissions();
     expect(listed.length).toBeGreaterThan(0);
     expect(JSON.stringify(listed)).not.toMatch(/client_secret|application_key|password/i);
   });
