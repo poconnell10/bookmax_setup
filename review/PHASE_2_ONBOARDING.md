@@ -8,6 +8,7 @@
 | Reviewed commit | `e5347e6cdc25242f64d5edcbb5a25996d54b74aa` |
 | Review branch | `cursor/phase-2-onboarding-review-0dcd` |
 | Review date | 29 Oct 2026, 2:10 PM EDT (America/New_York) |
+| Amended | 29 Oct 2026, 2:15 PM EDT (America/New_York) — follow-up verification of parallel review passes |
 | Method | Static analysis of invitation + `/setup` flows, APIs, stores, migrations, tests |
 | Code modified | None (this document only) |
 
@@ -26,7 +27,7 @@ Only **confirmed** defects from code/tests. Speculation is under **Unverified**.
 
 **NOT READY for end-to-end onboarding acceptance** on the **invitation** workflow (Invitation → OTP → Property → Contacts → PMS → Review → Submit).
 
-The newer **`/setup`** path (Access OTP → Property → PMS → Connect → Review → Submit) is materially stronger (server-side `submitBlockers`, API-gated step saves, resume helpers) but still has non-transactional multi-write steps and no server-side stage deep-link enforcement.
+The newer **`/setup`** path (Access OTP → Property → PMS → Connect → Review → Submit) is materially stronger (server-side `submitBlockers`, API-gated step saves, resume helpers) but has a **P1** completeness hole after Admin-started property (ONB-14), plus non-transactional multi-write steps and no server-side stage deep-link enforcement.
 
 Two parallel customer onboarding systems coexist. Product readiness must pick a primary path; the invitation path currently fails several reliability acceptance bars.
 
@@ -365,6 +366,164 @@ Parse `{ error, code }`; retry once on `503`; keep submit button double-submit g
 
 ---
 
+### ONB-10 — P1 — Stale `bookmax.submitted` blocks a new invitation in the same browser
+
+**Area:** Session recovery / duplicate invitations
+
+**Evidence**
+
+After submit, client persists full intake under `localStorage["bookmax.submitted"]` (`IntakeProvider.tsx`). On `/implementation` (no `initialState`), provider rehydrates from that key. `ImplementationSignIn` then treats `state.submitted` as terminal and `router.replace("/implementation/thanks")` (`ImplementationSignIn.tsx:41-45`, `:166-171`).
+
+Opening a **new** invite only sets `bookmax.invitation` (`invite/[token]/route.ts`); it does not clear `bookmax.submitted` or rotate `bookmax.invitation_claim`. Mismatched claim vs cookie fails `proxy.ts` / `gate.ts` → redirect to `/implementation` → submitted local state → thanks again.
+
+**Reproduction**
+
+1. Complete invitation A through submit (localStorage written).
+2. Open invitation B link in the same browser.
+3. Observe: cannot complete OTP for B; lands on thanks / redirect loop instead of fresh sign-in.
+
+**Remediation**
+
+- Clear `bookmax.submitted` (and claim) when resolving a new invitation token.
+- Prefer server invitation status over localStorage for “already submitted.”
+- On sign-in, if invitation cookie ≠ stored submission’s invitation id, ignore local submitted state.
+
+**Acceptance criteria**
+
+- After completing A, invite B shows OTP for B’s email and allows a new flow.
+- Automated test covering localStorage submitted + new invitation cookie.
+
+---
+
+### ONB-11 — P1 — “Set up another property” cannot complete on the same invitation
+
+**Area:** Multi-property / recovery UX
+
+**Evidence**
+
+`SuccessScreen.restart` clears client storage and pushes `/implementation/property` without issuing a new invitation (`SuccessScreen.tsx:13-22`). Draft POST on a submitted invitation returns success without writing (`draft/route.ts:58-60`). `submitFinal` throws `duplicate_submission` (`service.ts:197-201`). Review maps that to a generic save error (`ReviewScreen.tsx:49-52`).
+
+**Reproduction**
+
+1. Finish invitation flow → Thanks.
+2. Click “Set up another property.”
+3. Fill steps → Start implementation → error; no second submission possible.
+
+**Remediation**
+
+- Remove the button, **or** require a new invitation / Admin provision before restart.
+- If multi-property is a product goal, create a new implementation/invitation server-side on restart.
+
+**Acceptance criteria**
+
+- Button either absent or starts a server-backed new onboarding record; second submit succeeds only against that new record.
+
+---
+
+### ONB-12 — P1 — Lost submit response leaves Review stuck despite server success
+
+**Area:** Error handling / retries / incomplete submissions
+
+**Evidence**
+
+`submitSetup` only short-circuits when **local** `state.submitted && state.submissionId` (`IntakeProvider.tsx:165-167`). `postJson` throws on any non-OK, including `duplicate_submission`, discarding the body. After server insert succeeds but the browser loses the response (or draft follow-up fails), retry hits unique/duplicate and shows “could not save” while a submission row already exists.
+
+**Remediation**
+
+- On `duplicate_submission` / 400 with that code, fetch owned submission id and treat as success → thanks.
+- Make submit API idempotent: return existing `submissionId` when already submitted.
+- Prefer atomic submit (ONB-05) so status and row never diverge.
+
+**Acceptance criteria**
+
+- Second click after a successful server submit navigates to thanks with the existing id.
+- Test: mock first client failure after server insert; second attempt succeeds idempotently.
+
+---
+
+### ONB-13 — P2 — PMS continue persists stale `connectionDetailsStatus`
+
+**Area:** Data persistence
+
+**Evidence**
+
+`PmsScreen` calls `patch({ connectionDetailsStatus: "complete" })` then immediately `saveDraft()`, which closes over pre-patch `state` (`PmsScreen.tsx:53-55`, `IntakeProvider.tsx:139-147`). Draft can retain `not_started`. Refresh before submit can produce submission records with `connection_details_status: "not_started"` (`selectors.ts` defaults / `toSubmissionRecord`).
+
+**Remediation**
+
+- Pass the next state into `saveDraft(next)` or `await` state flush; or set status inside the save payload explicitly.
+
+**Acceptance criteria**
+
+- After PMS Continue, server draft has `connectionDetailsStatus: "complete"`.
+
+---
+
+### ONB-14 — P1 — Admin-started `/setup` property can be submitted without a PMS access contact
+
+**Area:** Server-side validation / incomplete submissions (`/setup`)
+
+**Evidence**
+
+Admin may save property with only name + contact name (no people payload) — intentional UI copy that customer will finish later (`PropertySetupScreen`; `tests/users-access.test.ts:1760-1792`). Resume with any property row goes to `/setup/pms` (`lib/setup/resume.ts:17-21`), never back to Property for PMS contact.
+
+`submitBlockers` does **not** require technical contact when `sameAsPrimaryContact` is false and tech fields are empty — it only validates email **format if non-empty** (`lib/setup/intake.ts:157-179`). Default intake has `sameAsPrimaryContact: false` and empty tech fields. Thanks still promises contact via `ownerName(...)`, which is empty.
+
+**Reproduction**
+
+1. Admin saves property name + primary contact only.
+2. Customer OTP → resumes `/setup/pms` → selects PMS → Connect → Review → Submit.
+3. Submission succeeds with empty PMS access contact.
+
+**Remediation**
+
+- Require PMS contact (or `sameAsPrimaryContact: true`) in `submitBlockers` and/or force resume to Property until people complete.
+- Optionally require people on customer (non-admin) property POST.
+
+**Acceptance criteria**
+
+- Submit blocked until PMS access contact is complete or explicitly “same as primary.”
+- Admin partial save → customer resume returns to Property when people incomplete.
+- Regression test for Admin partial → full funnel → submit must fail or force Property.
+
+---
+
+### ONB-15 — P2 — `/setup` Property step lacks post-submit redirect
+
+**Area:** Workflow transitions
+
+**Evidence**
+
+PMS / Connect / Review / Thanks redirect when `submission` exists. `PropertySetupScreen` load effect does not check submission (`PropertySetupScreen.tsx:44-90`); writes later fail with “already submitted.”
+
+**Remediation**
+
+Redirect to `/setup/thanks` (or resume) when submission present, consistent with sibling steps.
+
+**Acceptance criteria**
+
+- Opening `/setup/property` after submit lands on thanks.
+
+---
+
+### ONB-16 — P2 — Invalid/expired invitation query param is never shown
+
+**Area:** Error handling
+
+**Evidence**
+
+Invite route sets `?invite=<code>` on failure (`invite/[token]/route.ts:33-37`). Sign-in UI never reads it; without a cookie it falls back toward `KNOWN_CUSTOMER` email display (`ImplementationSignIn.tsx:39`).
+
+**Remediation**
+
+Render invite error states for `expired` / `revoked` / `invalid` / `not_found`.
+
+**Acceptance criteria**
+
+- Expired link shows a clear message; no fake prefilled demo email.
+
+---
+
 ## Multi-property onboarding & ownership
 
 | Claim / expectation | Reality in code |
@@ -388,10 +547,11 @@ Parse `{ error, code }`; retry once on `503`; keep submit button double-submit g
 | Client cannot spoof invitation id on submit | Submit overwrites `invitation_id`; phase3 cross-invite test |
 | One submission per invitation (DB unique + service check) | Migration unique; `submitFinal`; memory/file stores; phase1/3 tests |
 | One submission per `/setup` implementation | Unique + `SUBMIT-002` in `tests/m2-api.test.ts` |
-| `/setup` server completeness on submit | `submitSetup` + `submitBlockers` |
+| `/setup` server completeness on submit | `submitSetup` + `submitBlockers` (incomplete for PMS contact — ONB-14) |
 | `/setup` resume path from rows | `getSetupResumePath` / `/setup/complete` |
 | Draft upsert one row per invitation | `unique(invitation_id)` on draft |
 | Invitation runtime uses Supabase store | `invitation/runtime.ts`; phase3 wiring test |
+| Admin can save property with name + contact only | Intentionally allowed; creates ONB-14 unless customer is forced back |
 
 ---
 
@@ -407,6 +567,13 @@ Parse `{ error, code }`; retry once on `503`; keep submit button double-submit g
 | Server stage gating | P2 — ONB-07 |
 | Duplicate active invitations policy | P2 — ONB-08 |
 | Structured errors / retry | P2 — ONB-09 |
+| New invite after prior submit (localStorage) | P1 — ONB-10 |
+| “Set up another property” without new invite | P1 — ONB-11 |
+| Idempotent submit / lost response recovery | P1 — ONB-12 |
+| PMS draft `connectionDetailsStatus` stale save | P2 — ONB-13 |
+| `/setup` submit without PMS access contact | P1 — ONB-14 |
+| `/setup` property post-submit redirect | P2 — ONB-15 |
+| Invite error query param unused | P2 — ONB-16 |
 
 ---
 
@@ -417,7 +584,7 @@ Parse `{ error, code }`; retry once on `503`; keep submit button double-submit g
 - Invitation phase1–3: token hash, bind rules, draft strip of client auth fields, duplicate submission mapping, cross-invitation submit isolation.
 - `/setup` m1/m2 API: property/PMS/connect/submit; duplicate submit rejection.
 - poc-flow / stage-nav: client navigation UX for invitation stages.
-- users-access: Admin property provisioning interactions with setup.
+- users-access: Admin property provisioning interactions with setup (including admin partial property → resume `/setup/pms`).
 
 ### Critical missing tests
 
@@ -430,6 +597,11 @@ Parse `{ error, code }`; retry once on `503`; keep submit button double-submit g
 7. Credential invitation path creates envelope (or endpoint removed).
 8. Re-issue invitation for same email — policy assertion.
 9. End-to-end invitation browser test against API (not only in-memory service), including OTP verify mocked.
+10. `bookmax.submitted` + new invitation cookie → OTP for B, not thanks loop (ONB-10).
+11. “Set up another property” blocked or creates new server record (ONB-11).
+12. Idempotent submit after lost response / `duplicate_submission` (ONB-12).
+13. Admin partial property → customer funnel → submit must require PMS contact (ONB-14).
+14. PMS continue persists `connectionDetailsStatus: "complete"` (ONB-13).
 
 ---
 
@@ -437,14 +609,14 @@ Parse `{ error, code }`; retry once on `503`; keep submit button double-submit g
 
 | Path | Verdict |
 | --- | --- |
-| Invitation → … → Submit | **NOT READY** — P1 gaps ONB-01–ONB-04 block reliability acceptance |
-| `/setup` provisioned customer | **CONDITIONALLY STRONGER** — suitable as primary path only after ONB-06/07 addressed or accepted; still not multi-property |
-| Overall product onboarding | **NOT READY** until invitation path is fixed or formally retired in favor of `/setup` |
+| Invitation → … → Submit | **NOT READY** — P1 gaps ONB-01–04, ONB-10–12 |
+| `/setup` provisioned customer | **NOT READY** for Admin-assisted funnel until ONB-14 fixed; otherwise stronger than invitation but still ONB-06/07/15 |
+| Overall product onboarding | **NOT READY** until invitation P1s fixed or path retired, and ONB-14 closed on `/setup` |
 
 **Minimum bar to re-review toward acceptance**
 
-1. Fix ONB-01, ONB-02, ONB-03 (invitation).  
-2. Fix or remove ONB-04 credential handoff.  
+1. Fix invitation P1s: ONB-01, ONB-02, ONB-03, ONB-04, ONB-10, ONB-11, ONB-12.  
+2. Fix `/setup` ONB-14 (PMS contact required or resume forced to Property).  
 3. Add critical tests listed above.  
 4. Decide and document primary onboarding path; remove or freeze the other to avoid dual-behavior drift.
 
